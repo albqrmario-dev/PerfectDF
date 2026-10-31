@@ -328,6 +328,11 @@ python -m perfectdf --help
   python -m perfectdf marca-dagua documento.pdf "CONFIDENCIAL" -o protegido.pdf --opacidade 0.2
   ```
 
+- **Adicionar Nota:**
+  ```bash
+  python -m perfectdf adicionar-nota documento.pdf -p 1 -t "Revisar este trecho" --posicao "50,100" -o documento_com_nota.pdf
+  ```
+
 - **Numerar Páginas:**
   ```bash
   python -m perfectdf numerar documento.pdf -o numerado.pdf --posicao rodape-direita --formato "Pág. {n}/{total}"

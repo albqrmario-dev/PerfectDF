@@ -134,6 +134,31 @@ def test_cli_marca_dagua(tmp_path, pdf_simples, capsys):
     assert os.path.isfile(saida)
 
 
+def test_cli_adicionar_nota(tmp_path, pdf_simples, capsys):
+    saida = str(tmp_path / "com_nota.pdf")
+    codigo = main([
+        "adicionar-nota", pdf_simples, "-p", "2", "-t", "Revisar este trecho",
+        "--posicao", "80,90", "-o", saida,
+    ])
+    assert codigo == 0
+    assert os.path.isfile(saida)
+    assert "Nota adicionada" in capsys.readouterr().out
+
+    doc = pymupdf.open(saida)
+    assert list(doc[1].annots())
+    assert not list(doc[0].annots())
+    doc.close()
+
+
+def test_cli_adicionar_nota_alias(tmp_path, pdf_simples, capsys):
+    saida = str(tmp_path / "com_nota_alias.pdf")
+    codigo = main([
+        "adicionar_nota", pdf_simples, "-p", "1", "-t", "Nota via alias", "-o", saida,
+    ])
+    assert codigo == 0
+    assert os.path.isfile(saida)
+
+
 def test_cli_numerar(tmp_path, pdf_simples, capsys):
     saida = str(tmp_path / "numerado.pdf")
     codigo = main(["numerar", pdf_simples, "-o", saida, "--posicao", "rodape-direita"])

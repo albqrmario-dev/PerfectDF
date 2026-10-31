@@ -192,7 +192,27 @@ def criar_parser() -> argparse.ArgumentParser:
         help="Tamanho da fonte em pontos (padrão: 48).",
     )
 
-    # 9. numerar
+    # 9. adicionar-nota
+    p_nota = subparsers.add_parser(
+        "adicionar-nota",
+        aliases=["adicionar_nota"],
+        help="Adiciona uma anotação pop-up a uma página do PDF.",
+    )
+    p_nota.add_argument("pdf", help="Arquivo PDF de origem.")
+    p_nota.add_argument(
+        "-p", "--pagina", type=int, required=True, help="Número da página (base 1)."
+    )
+    p_nota.add_argument("-t", "--texto", required=True, help="Texto da anotação.")
+    p_nota.add_argument(
+        "-o", "--saida", required=True, help="Caminho do arquivo PDF resultante."
+    )
+    p_nota.add_argument(
+        "--posicao",
+        default="50,50",
+        help="Coordenadas visuais x,y na página (padrão: '50,50').",
+    )
+
+    # 10. numerar
     p_numerar = subparsers.add_parser(
         "numerar", help="Adiciona numeração sequencial às páginas do PDF."
     )
@@ -502,6 +522,24 @@ def executar_comando(args: argparse.Namespace) -> int:
             tamanho_fonte=args.tamanho_fonte,
         )
         print(f"Sucesso: Marca d'água aplicada e salva em '{args.saida}'.")
+
+    elif cmd == "adicionar-nota":
+        partes_pos = [p.strip() for p in args.posicao.split(",")]
+        if len(partes_pos) != 2:
+            raise ValueError(f"Posição inválida: '{args.posicao}'. Formato esperado: 'X,Y'.")
+        try:
+            posicao = (float(partes_pos[0]), float(partes_pos[1]))
+        except ValueError as e:
+            raise ValueError(f"As coordenadas da posição devem ser numéricas: '{args.posicao}'.") from e
+
+        adicionar_nota(
+            caminho=args.pdf,
+            saida=args.saida,
+            pagina=args.pagina,
+            texto=args.texto,
+            posicao=posicao,
+        )
+        print(f"Sucesso: Nota adicionada e salva em '{args.saida}'.")
 
     elif cmd == "numerar":
         numerar_paginas(
