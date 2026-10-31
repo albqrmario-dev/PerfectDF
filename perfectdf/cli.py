@@ -1,11 +1,11 @@
 """Interface de Linha de Comando (CLI) para o PerfectDF."""
 
 import argparse
-import os
 import sys
 from collections.abc import Sequence
 
 from perfectdf import (
+    achatar_formulario,
     adicionar_imagem,
     adicionar_marca_dagua,
     adicionar_nota,
@@ -20,10 +20,12 @@ from perfectdf import (
     imagens_para_pdf,
     juntar_pdfs,
     ler_metadados,
+    listar_campos,
     numerar_paginas,
     parsear_ordem,
     parsear_paginas,
     pdf_para_imagens,
+    preencher_formulario,
     proteger_pdf,
     remover_senha,
     reordenar_paginas,
@@ -56,7 +58,9 @@ def criar_parser() -> argparse.ArgumentParser:
     p_juntar = subparsers.add_parser(
         "juntar", help="Junta múltiplos arquivos PDF em um único arquivo."
     )
-    p_juntar.add_argument("arquivos", nargs="+", help="Arquivos PDF a serem combinados.")
+    p_juntar.add_argument(
+        "arquivos", nargs="+", help="Arquivos PDF a serem combinados."
+    )
     p_juntar.add_argument(
         "-o", "--saida", required=True, help="Caminho do arquivo PDF resultante."
     )
@@ -360,7 +364,9 @@ def criar_parser() -> argparse.ArgumentParser:
         "-t", "--texto", required=True, help="Texto a ser adicionado."
     )
     p_add_txt.add_argument(
-        "-o", "--saida", help="Arquivo PDF resultante (se omitido, altera o próprio PDF original)."
+        "-o",
+        "--saida",
+        help="Arquivo PDF resultante (se omitido, altera o próprio PDF original).",
     )
     p_add_txt.add_argument(
         "--posicao",
@@ -368,13 +374,20 @@ def criar_parser() -> argparse.ArgumentParser:
         help="Coordenadas visuais x,y na página (ex: '100,200', padrão: '50,50').",
     )
     p_add_txt.add_argument(
-        "--fonte", default="helv", help="Fonte do texto (ex: helv, times, courier; padrão: helv)."
+        "--fonte",
+        default="helv",
+        help="Fonte do texto (ex: helv, times, courier; padrão: helv).",
     )
     p_add_txt.add_argument(
-        "--tamanho", type=float, default=12.0, help="Tamanho da fonte em pontos (padrão: 12.0)."
+        "--tamanho",
+        type=float,
+        default=12.0,
+        help="Tamanho da fonte em pontos (padrão: 12.0).",
     )
     p_add_txt.add_argument(
-        "--cor", default="preto", help="Cor do texto ('preto', 'azul', 'vermelho' ou 'R,G,B'; padrão: preto)."
+        "--cor",
+        default="preto",
+        help="Cor do texto ('preto', 'azul', 'vermelho' ou 'R,G,B'; padrão: preto).",
     )
 
     # 16. adicionar-imagem
@@ -391,7 +404,9 @@ def criar_parser() -> argparse.ArgumentParser:
         "-i", "--imagem", required=True, help="Caminho do arquivo de imagem."
     )
     p_add_img.add_argument(
-        "-o", "--saida", help="Arquivo PDF resultante (se omitido, altera o próprio PDF original)."
+        "-o",
+        "--saida",
+        help="Arquivo PDF resultante (se omitido, altera o próprio PDF original).",
     )
     p_add_img.add_argument(
         "--posicao",
@@ -435,6 +450,41 @@ def criar_parser() -> argparse.ArgumentParser:
         help="Se informado, busca diferenciando maiúsculas/minúsculas.",
     )
 
+    # 18. listar-campos
+    p_listar = subparsers.add_parser(
+        "listar-campos",
+        aliases=["listar_campos"],
+        help="Lista os campos de formulário (AcroForm) presentes em um PDF.",
+    )
+    p_listar.add_argument("pdf", help="Arquivo PDF com formulário.")
+
+    # 19. preencher
+    p_preencher = subparsers.add_parser(
+        "preencher",
+        help="Preenche campos de um formulário PDF pelos seus nomes.",
+    )
+    p_preencher.add_argument("pdf", help="Arquivo PDF com formulário.")
+    p_preencher.add_argument(
+        "-o", "--saida", required=True, help="Caminho do arquivo PDF resultante."
+    )
+    p_preencher.add_argument(
+        "--campo",
+        action="append",
+        required=True,
+        metavar="nome=valor",
+        help="Campo a preencher no formato 'nome=valor'. Pode ser repetido.",
+    )
+
+    # 20. achatar
+    p_achatar = subparsers.add_parser(
+        "achatar",
+        help="Converte os campos de formulário em conteúdo fixo (não editável).",
+    )
+    p_achatar.add_argument("pdf", help="Arquivo PDF com formulário.")
+    p_achatar.add_argument(
+        "-o", "--saida", required=True, help="Caminho do arquivo PDF resultante."
+    )
+
     return parser
 
 
@@ -442,7 +492,9 @@ def executar_comando(args: argparse.Namespace) -> int:
     """Executa a ação correspondente ao subcomando selecionado."""
     cmd = args.comando
     if not cmd:
-        sys.stderr.write("Erro: Nenhum subcomando informado. Use '--help' para ver os comandos disponíveis.\n")
+        sys.stderr.write(
+            "Erro: Nenhum subcomando informado. Use '--help' para ver os comandos disponíveis.\n"
+        )
         return 2
 
     # Normalizar aliases
@@ -482,7 +534,9 @@ def executar_comando(args: argparse.Namespace) -> int:
         )
         if tem_edicao:
             if not args.saida:
-                raise ValueError("O parâmetro '--saida' / '-o' é obrigatório ao editar metadados.")
+                raise ValueError(
+                    "O parâmetro '--saida' / '-o' é obrigatório ao editar metadados."
+                )
             novos = {}
             if args.titulo is not None:
                 novos["title"] = args.titulo
@@ -526,11 +580,15 @@ def executar_comando(args: argparse.Namespace) -> int:
     elif cmd == "adicionar-nota":
         partes_pos = [p.strip() for p in args.posicao.split(",")]
         if len(partes_pos) != 2:
-            raise ValueError(f"Posição inválida: '{args.posicao}'. Formato esperado: 'X,Y'.")
+            raise ValueError(
+                f"Posição inválida: '{args.posicao}'. Formato esperado: 'X,Y'."
+            )
         try:
             posicao = (float(partes_pos[0]), float(partes_pos[1]))
         except ValueError as e:
-            raise ValueError(f"As coordenadas da posição devem ser numéricas: '{args.posicao}'.") from e
+            raise ValueError(
+                f"As coordenadas da posição devem ser numéricas: '{args.posicao}'."
+            ) from e
 
         adicionar_nota(
             caminho=args.pdf,
@@ -583,7 +641,9 @@ def executar_comando(args: argparse.Namespace) -> int:
             dpi=args.dpi,
             formato=args.formato,
         )
-        print(f"Sucesso: {len(arquivos)} página(s) convertida(s) em imagens na pasta '{args.pasta_saida}'.")
+        print(
+            f"Sucesso: {len(arquivos)} página(s) convertida(s) em imagens na pasta '{args.pasta_saida}'."
+        )
 
     elif cmd == "imagens-para-pdf":
         imagens_para_pdf(args.imagens, args.saida)
@@ -593,17 +653,23 @@ def executar_comando(args: argparse.Namespace) -> int:
         # Parse posição
         partes_pos = [p.strip() for p in args.posicao.split(",")]
         if len(partes_pos) != 2:
-            raise ValueError(f"Posição inválida: '{args.posicao}'. Formato esperado: 'X,Y'.")
+            raise ValueError(
+                f"Posição inválida: '{args.posicao}'. Formato esperado: 'X,Y'."
+            )
         try:
             posicao = (float(partes_pos[0]), float(partes_pos[1]))
         except ValueError as e:
-            raise ValueError(f"As coordenadas da posição devem ser numéricas: '{args.posicao}'.") from e
+            raise ValueError(
+                f"As coordenadas da posição devem ser numéricas: '{args.posicao}'."
+            ) from e
 
         # Parse cor
         if "," in args.cor:
             partes_cor = [c.strip() for c in args.cor.split(",")]
             if len(partes_cor) != 3:
-                raise ValueError(f"Tupla de cor inválida: '{args.cor}'. Formato esperado: 'R,G,B'.")
+                raise ValueError(
+                    f"Tupla de cor inválida: '{args.cor}'. Formato esperado: 'R,G,B'."
+                )
             try:
                 cor_parsed: str | tuple[float, float, float] = (
                     float(partes_cor[0]),
@@ -611,7 +677,9 @@ def executar_comando(args: argparse.Namespace) -> int:
                     float(partes_cor[2]),
                 )
             except ValueError as e:
-                raise ValueError(f"Os componentes de cor RGB devem ser numéricos: '{args.cor}'.") from e
+                raise ValueError(
+                    f"Os componentes de cor RGB devem ser numéricos: '{args.cor}'."
+                ) from e
         else:
             cor_parsed = args.cor
 
@@ -631,11 +699,15 @@ def executar_comando(args: argparse.Namespace) -> int:
         # Parse posição
         partes_pos = [p.strip() for p in args.posicao.split(",")]
         if len(partes_pos) != 2:
-            raise ValueError(f"Posição inválida: '{args.posicao}'. Formato esperado: 'X,Y'.")
+            raise ValueError(
+                f"Posição inválida: '{args.posicao}'. Formato esperado: 'X,Y'."
+            )
         try:
             posicao = (float(partes_pos[0]), float(partes_pos[1]))
         except ValueError as e:
-            raise ValueError(f"As coordenadas da posição devem ser numéricas: '{args.posicao}'.") from e
+            raise ValueError(
+                f"As coordenadas da posição devem ser numéricas: '{args.posicao}'."
+            ) from e
 
         # Parse tamanho
         tamanho_parsed: tuple[float, float] | float | None = None
@@ -643,16 +715,22 @@ def executar_comando(args: argparse.Namespace) -> int:
             if "," in args.tamanho:
                 partes_tam = [t.strip() for t in args.tamanho.split(",")]
                 if len(partes_tam) != 2:
-                    raise ValueError(f"Tamanho inválido: '{args.tamanho}'. Formato esperado: 'largura,altura'.")
+                    raise ValueError(
+                        f"Tamanho inválido: '{args.tamanho}'. Formato esperado: 'largura,altura'."
+                    )
                 try:
                     tamanho_parsed = (float(partes_tam[0]), float(partes_tam[1]))
                 except ValueError as e:
-                    raise ValueError(f"As dimensões de tamanho devem ser numéricas: '{args.tamanho}'.") from e
+                    raise ValueError(
+                        f"As dimensões de tamanho devem ser numéricas: '{args.tamanho}'."
+                    ) from e
             else:
                 try:
                     tamanho_parsed = float(args.tamanho)
                 except ValueError as e:
-                    raise ValueError(f"A dimensão de largura deve ser numérica: '{args.tamanho}'.") from e
+                    raise ValueError(
+                        f"A dimensão de largura deve ser numérica: '{args.tamanho}'."
+                    ) from e
 
         destino = adicionar_imagem(
             pdf=args.pdf,
@@ -676,13 +754,48 @@ def executar_comando(args: argparse.Namespace) -> int:
         )
         total = resultado["total_ocorrencias"]
         if total > 0:
-            print(f"Sucesso: {total} ocorrência(s) de '{args.termo}' destacada(s) e salva(s) em '{args.saida}'.")
+            print(
+                f"Sucesso: {total} ocorrência(s) de '{args.termo}' destacada(s) e salva(s) em '{args.saida}'."
+            )
             for pag, qtd in sorted(resultado["ocorrencias_por_pagina"].items()):
                 print(f"  Página {pag}: {qtd} ocorrência(s)")
         else:
             print(f"Nenhuma ocorrência de '{args.termo}' foi encontrada.")
             if "aviso" in resultado:
                 print(f"  Aviso: {resultado['aviso']}")
+
+    elif cmd == "listar-campos":
+        campos = listar_campos(args.pdf)
+        for campo in campos:
+            print(
+                f"  Campo: '{campo['nome']}' | Tipo: {campo['tipo']} "
+                f"| Valor: '{campo['valor']}' | Página: {campo['pagina']}"
+            )
+        print(f"Total: {len(campos)} campo(s) encontrado(s).")
+
+    elif cmd == "preencher":
+        valores: dict[str, str | bool] = {}
+        for item in args.campo:
+            if "=" not in item:
+                raise ValueError(
+                    f"Formato inválido para --campo: '{item}'. "
+                    "Use o formato 'nome=valor'."
+                )
+            nome, valor = item.split("=", 1)
+            nome = nome.strip()
+            valor = valor.strip()
+            if not nome:
+                raise ValueError(
+                    f"Nome de campo vazio em '--campo {item}'. "
+                    "Use o formato 'nome=valor'."
+                )
+            valores[nome] = valor
+        preencher_formulario(args.pdf, valores, args.saida)
+        print(f"Sucesso: Formulário preenchido e salvo em '{args.saida}'.")
+
+    elif cmd == "achatar":
+        achatar_formulario(args.pdf, args.saida)
+        print(f"Sucesso: Formulário achatado e salvo em '{args.saida}'.")
 
     return 0
 
@@ -697,7 +810,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ValueError, FileNotFoundError, PermissionError) as e:
         sys.stderr.write(f"Erro: {e}\n")
         return 1
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         sys.stderr.write(f"Erro: {e}\n")
         return 1
 

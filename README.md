@@ -49,6 +49,9 @@ from perfectdf import (
     pdf_para_imagens,
     imagens_para_pdf,
     adicionar_imagem,
+    listar_campos,
+    preencher_formulario,
+    achatar_formulario,
 )
 ```
 
@@ -102,7 +105,7 @@ novos = {
     "title": "Relatório Anual 2026",
     "author": "Equipe PerfectDF",
     "subject": "Financeiro",
-    "keywords": "relatório, pdf, 2026"
+    "keywords": "relatório, pdf, 2026",
 }
 editar_metadados("documento.pdf", novos=novos, saida="documento_atualizado.pdf")
 ```
@@ -129,7 +132,7 @@ adicionar_texto(
     fonte="helv",
     tamanho=14,
     cor="azul",  # ou tupla RGB: (0.0, 0.5, 1.0)
-    saida="documento_aprovado.pdf"  # Opcional: se omitido, modifica o próprio arquivo
+    saida="documento_aprovado.pdf",  # Opcional: se omitido, modifica o próprio arquivo
 )
 ```
 
@@ -146,7 +149,7 @@ adicionar_marca_dagua(
     texto="CONFIDENCIAL",
     opacidade=0.25,
     angulo=45,
-    tamanho_fonte=48
+    tamanho_fonte=48,
 )
 ```
 
@@ -158,7 +161,7 @@ numerar_paginas(
     saida="documento_numerado.pdf",
     formato="Página {n} de {total}",
     posicao="rodape-centro",  # ou: 'rodape-direita', 'topo-centro', etc.
-    inicio=1
+    inicio=1,
 )
 ```
 
@@ -170,7 +173,7 @@ adicionar_nota(
     saida="documento_com_nota.pdf",
     pagina=1,
     texto="Revisar estes números antes do envio.",
-    posicao=(50, 100)
+    posicao=(50, 100),
 )
 ```
 
@@ -183,14 +186,47 @@ resultado = destacar_texto(
     termo="importante",
     tipo="destaque",
     cor="amarelo",
-    ignorar_maiusculas=True
+    ignorar_maiusculas=True,
 )
 print(f"Total de ocorrências destacadas: {resultado['total_ocorrencias']}")
 ```
 
 ---
 
-### 4. Segurança e Otimização
+### 4. Formulários PDF (AcroForm)
+
+#### Listar Campos de Formulário
+Retorna todos os campos do formulário com seus tipos, valores e páginas.
+```python
+campos = listar_campos("formulario.pdf")
+for campo in campos:
+    print(
+        f"Nome: {campo['nome']} | Tipo: {campo['tipo']} | Valor: {campo['valor']} | Pág: {campo['pagina']}"
+    )
+```
+
+#### Preencher Formulário
+Preenche campos de texto, checkboxes e outros widgets pelo nome.
+```python
+valores = {
+    "nome_completo": "João Silva",
+    "email": "joao@exemplo.com",
+    "aceito_termos": True,
+}
+preencher_formulario(
+    "formulario.pdf", valores=valores, saida="formulario_preenchido.pdf"
+)
+```
+
+#### Achatar Formulário (Flatten)
+Converte os campos editáveis em conteúdo fixo permanente (não editável).
+```python
+achatar_formulario("formulario_preenchido.pdf", saida="formulario_final.pdf")
+```
+
+---
+
+### 5. Segurança e Otimização
 
 #### Proteger com Senha
 Criptografa o PDF com AES-256 definindo senha de usuário e opcionalmente de proprietário.
@@ -199,7 +235,7 @@ proteger_pdf(
     caminho="documento.pdf",
     saida="documento_protegido.pdf",
     senha_usuario="senha123",
-    senha_dono="admin456"
+    senha_dono="admin456",
 )
 ```
 
@@ -207,31 +243,28 @@ proteger_pdf(
 Descriptografa um documento PDF protegido.
 ```python
 remover_senha(
-    caminho="documento_protegido.pdf",
-    senha="senha123",
-    saida="documento_aberto.pdf"
+    caminho="documento_protegido.pdf", senha="senha123", saida="documento_aberto.pdf"
 )
 ```
 
 #### Comprimir PDF
 Reduz o tamanho do arquivo utilizando diferentes níveis (`baixo`, `medio`, `alto`).
 ```python
-estatisticas = comprimir_pdf("documento.pdf", saida="documento_comprimido.pdf", nivel="medio")
+estatisticas = comprimir_pdf(
+    "documento.pdf", saida="documento_comprimido.pdf", nivel="medio"
+)
 print(f"Economia de espaço: {estatisticas['economia_percentual']}%")
 ```
 
 ---
 
-### 5. Conversão PDF ↔ Imagens
+### 6. Conversão PDF ↔ Imagens
 
 #### PDF para Imagens
 Renderiza páginas do PDF como arquivos de imagem (PNG ou JPG).
 ```python
 imagens = pdf_para_imagens(
-    caminho="documento.pdf",
-    pasta_saida="imagens_extraidas",
-    dpi=150,
-    formato="png"
+    caminho="documento.pdf", pasta_saida="imagens_extraidas", dpi=150, formato="png"
 )
 print("Imagens geradas:", imagens)
 ```
@@ -240,8 +273,7 @@ print("Imagens geradas:", imagens)
 Cria um PDF a partir de uma sequência ordenada de imagens.
 ```python
 imagens_para_pdf(
-    imagens=["pagina_001.png", "pagina_002.png"],
-    saida="documento_compilado.pdf"
+    imagens=["pagina_001.png", "pagina_002.png"], saida="documento_compilado.pdf"
 )
 ```
 
@@ -253,8 +285,11 @@ adicionar_imagem(
     pagina=1,
     imagem="logo.png",
     posicao=(50, 50),
-    tamanho=(150, 80),  # Ou apenas 150 para largura proporcional, ou None para tamanho original
-    saida="documento_com_logo.pdf"  # Opcional: se omitido, modifica o próprio arquivo
+    tamanho=(
+        150,
+        80,
+    ),  # Ou apenas 150 para largura proporcional, ou None para tamanho original
+    saida="documento_com_logo.pdf",  # Opcional: se omitido, modifica o próprio arquivo
 )
 ```
 
@@ -336,6 +371,21 @@ python -m perfectdf --help
 - **Numerar Páginas:**
   ```bash
   python -m perfectdf numerar documento.pdf -o numerado.pdf --posicao rodape-direita --formato "Pág. {n}/{total}"
+  ```
+
+- **Listar Campos de Formulário:**
+  ```bash
+  python -m perfectdf listar-campos formulario.pdf
+  ```
+
+- **Preencher Formulário:**
+  ```bash
+  python -m perfectdf preencher formulario.pdf --campo "nome=João Silva" --campo "cidade=São Paulo" -o preenchido.pdf
+  ```
+
+- **Achatar Formulário:**
+  ```bash
+  python -m perfectdf achatar formulario.pdf -o fixo.pdf
   ```
 
 - **Comprimir PDF:**

@@ -19,6 +19,11 @@ from perfectdf.conversao import (
     imagens_para_pdf,
     pdf_para_imagens,
 )
+from perfectdf.formularios import (
+    achatar_formulario,
+    listar_campos,
+    preencher_formulario,
+)
 from perfectdf.metadados import (
     editar_metadados,
     ler_metadados,
@@ -43,6 +48,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "abrir_pdf",
+    "achatar_formulario",
     "adicionar_imagem",
     "adicionar_marca_dagua",
     "adicionar_nota",
@@ -57,10 +63,12 @@ __all__ = [
     "imagens_para_pdf",
     "juntar_pdfs",
     "ler_metadados",
+    "listar_campos",
     "numerar_paginas",
     "parsear_ordem",
     "parsear_paginas",
     "pdf_para_imagens",
+    "preencher_formulario",
     "proteger_pdf",
     "remover_senha",
     "reordenar_paginas",
