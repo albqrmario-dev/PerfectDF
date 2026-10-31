@@ -1,9 +1,10 @@
 import os
+from typing import cast
 
 from perfectdf.comum import abrir_pdf
 
 
-def ler_metadados(caminho: str) -> dict:
+def ler_metadados(caminho: str) -> dict[str, str | None]:
     """Lê os metadados de um documento PDF.
 
     Parâmetros:
@@ -22,7 +23,8 @@ def ler_metadados(caminho: str) -> dict:
 
     doc = abrir_pdf(caminho)
     try:
-        return dict(doc.metadata)
+        # A rotina abre PDFs, cujo objeto sempre fornece um mapa de metadados.
+        return dict(cast(dict[str, str | None], doc.metadata))
     finally:
         doc.close()
 
@@ -59,7 +61,7 @@ def editar_metadados(caminho: str, novos: dict[str, str], saida: str) -> str:
         raise ValueError(f"O arquivo de origem não foi encontrado: '{caminho}'.")
 
     if not isinstance(novos, dict):
-        raise ValueError("Os novos metadados devem ser fornecidos em um dicionário.")
+        raise ValueError("Os novos metadados devem ser fornecidos em um dicionário.")  # noqa: TRY004
 
     chaves_permitidas = {"title", "author", "subject", "keywords"}
     chaves_invalidas = set(novos.keys()) - chaves_permitidas
@@ -71,7 +73,7 @@ def editar_metadados(caminho: str, novos: dict[str, str], saida: str) -> str:
 
     for chave, valor in novos.items():
         if not isinstance(valor, str):
-            raise ValueError(
+            raise ValueError(  # noqa: TRY004
                 f"O valor do metadado '{chave}' deve ser uma string (recebido: {type(valor).__name__})."
             )
 

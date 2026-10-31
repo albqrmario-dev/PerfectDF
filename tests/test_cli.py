@@ -1,5 +1,6 @@
 # pyright: reportArgumentType=false, reportAttributeAccessIssue=false, reportOptionalSubscript=false
 import os
+
 import pymupdf
 import pytest
 
@@ -14,6 +15,42 @@ def pdf_simples(tmp_path):
         page = doc.new_page(width=300, height=300)
         page.insert_text((50, 50), f"Texto da Pagina {i}", fontsize=14)
     caminho = str(tmp_path / "simples.pdf")
+    doc.save(caminho)
+    doc.close()
+    return caminho
+
+
+@pytest.fixture
+def pdf_com_formulario_cli(tmp_path):
+    """Cria um PDF com campos de formulário para testes da CLI."""
+    doc = pymupdf.open()
+    page = doc.new_page(width=400, height=400)
+
+    # Campo de texto
+    w1 = pymupdf.Widget()
+    w1.field_name = "nome"
+    w1.field_type = pymupdf.PDF_WIDGET_TYPE_TEXT
+    w1.field_value = ""
+    w1.rect = pymupdf.Rect(50, 50, 250, 70)
+    page.add_widget(w1)
+
+    # Checkbox
+    w2 = pymupdf.Widget()
+    w2.field_name = "ativo"
+    w2.field_type = pymupdf.PDF_WIDGET_TYPE_CHECKBOX
+    w2.field_value = "Off"
+    w2.rect = pymupdf.Rect(50, 90, 70, 110)
+    page.add_widget(w2)
+
+    # Outro campo de texto
+    w3 = pymupdf.Widget()
+    w3.field_name = "cidade"
+    w3.field_type = pymupdf.PDF_WIDGET_TYPE_TEXT
+    w3.field_value = ""
+    w3.rect = pymupdf.Rect(50, 130, 250, 150)
+    page.add_widget(w3)
+
+    caminho = str(tmp_path / "formulario_cli.pdf")
     doc.save(caminho)
     doc.close()
     return caminho
@@ -97,13 +134,18 @@ def test_cli_metadados_leitura_e_edicao(tmp_path, pdf_simples, capsys):
 
     # Edição
     saida = str(tmp_path / "meta_editado.pdf")
-    codigo = main([
-        "metadados",
-        pdf_simples,
-        "--titulo", "Novo Titulo",
-        "--autor", "Autor Teste",
-        "-o", saida
-    ])
+    codigo = main(
+        [
+            "metadados",
+            pdf_simples,
+            "--titulo",
+            "Novo Titulo",
+            "--autor",
+            "Autor Teste",
+            "-o",
+            saida,
+        ]
+    )
     assert codigo == 0
 
     doc = pymupdf.open(saida)
@@ -137,10 +179,20 @@ def test_cli_marca_dagua(tmp_path, pdf_simples, capsys):
 
 def test_cli_adicionar_nota(tmp_path, pdf_simples, capsys):
     saida = str(tmp_path / "com_nota.pdf")
-    codigo = main([
-        "adicionar-nota", pdf_simples, "-p", "2", "-t", "Revisar este trecho",
-        "--posicao", "80,90", "-o", saida,
-    ])
+    codigo = main(
+        [
+            "adicionar-nota",
+            pdf_simples,
+            "-p",
+            "2",
+            "-t",
+            "Revisar este trecho",
+            "--posicao",
+            "80,90",
+            "-o",
+            saida,
+        ]
+    )
     assert codigo == 0
     assert os.path.isfile(saida)
     assert "Nota adicionada" in capsys.readouterr().out
@@ -153,9 +205,18 @@ def test_cli_adicionar_nota(tmp_path, pdf_simples, capsys):
 
 def test_cli_adicionar_nota_alias(tmp_path, pdf_simples, capsys):
     saida = str(tmp_path / "com_nota_alias.pdf")
-    codigo = main([
-        "adicionar_nota", pdf_simples, "-p", "1", "-t", "Nota via alias", "-o", saida,
-    ])
+    codigo = main(
+        [
+            "adicionar_nota",
+            pdf_simples,
+            "-p",
+            "1",
+            "-t",
+            "Nota via alias",
+            "-o",
+            saida,
+        ]
+    )
     assert codigo == 0
     assert os.path.isfile(saida)
 
@@ -182,7 +243,9 @@ def test_cli_proteger_e_remover_senha(tmp_path, pdf_simples, capsys):
     assert codigo_prot == 0
 
     desprotegido = str(tmp_path / "desprotegido.pdf")
-    codigo_rem = main(["remover-senha", protegido, "-s", "segredo123", "-o", desprotegido])
+    codigo_rem = main(
+        ["remover-senha", protegido, "-s", "segredo123", "-o", desprotegido]
+    )
     assert codigo_rem == 0
 
     doc = pymupdf.open(desprotegido)
@@ -207,7 +270,16 @@ def test_cli_pdf_para_imagens_e_imagens_para_pdf(tmp_path, pdf_simples, capsys):
 
 def test_cli_erros_sem_stack_trace(tmp_path, pdf_simples, capsys):
     # Arquivo não encontrado
-    codigo = main(["extrair", "arquivo_que_nao_existe.pdf", "-p", "1", "-o", str(tmp_path / "out.pdf")])
+    codigo = main(
+        [
+            "extrair",
+            "arquivo_que_nao_existe.pdf",
+            "-p",
+            "1",
+            "-o",
+            str(tmp_path / "out.pdf"),
+        ]
+    )
     assert codigo == 1
     captured = capsys.readouterr()
     assert "Erro: " in captured.err
@@ -216,7 +288,16 @@ def test_cli_erros_sem_stack_trace(tmp_path, pdf_simples, capsys):
     # Senha incorreta
     protegido = str(tmp_path / "prot.pdf")
     main(["proteger", pdf_simples, "-s", "correta", "-o", protegido])
-    codigo_senha = main(["remover-senha", protegido, "-s", "errada", "-o", str(tmp_path / "unlocked.pdf")])
+    codigo_senha = main(
+        [
+            "remover-senha",
+            protegido,
+            "-s",
+            "errada",
+            "-o",
+            str(tmp_path / "unlocked.pdf"),
+        ]
+    )
     assert codigo_senha == 1
     captured_senha = capsys.readouterr()
     assert "Erro: A senha informada está incorreta." in captured_senha.err
@@ -225,15 +306,22 @@ def test_cli_erros_sem_stack_trace(tmp_path, pdf_simples, capsys):
 
 def test_cli_adicionar_texto(tmp_path, pdf_simples, capsys):
     saida = str(tmp_path / "com_texto.pdf")
-    codigo = main([
-        "adicionar-texto",
-        pdf_simples,
-        "-p", "1",
-        "-t", "Texto via CLI",
-        "-o", saida,
-        "--posicao", "60,80",
-        "--cor", "vermelho",
-    ])
+    codigo = main(
+        [
+            "adicionar-texto",
+            pdf_simples,
+            "-p",
+            "1",
+            "-t",
+            "Texto via CLI",
+            "-o",
+            saida,
+            "--posicao",
+            "60,80",
+            "--cor",
+            "vermelho",
+        ]
+    )
     assert codigo == 0
     doc = pymupdf.open(saida)
     assert "Texto via CLI" in doc[0].get_text()
@@ -247,15 +335,22 @@ def test_cli_adicionar_imagem(tmp_path, pdf_simples, capsys):
     pix.save(img_path)
 
     saida = str(tmp_path / "com_imagem_cli.pdf")
-    codigo = main([
-        "adicionar-imagem",
-        pdf_simples,
-        "-p", "1",
-        "-i", img_path,
-        "-o", saida,
-        "--posicao", "40,40",
-        "--tamanho", "60,60",
-    ])
+    codigo = main(
+        [
+            "adicionar-imagem",
+            pdf_simples,
+            "-p",
+            "1",
+            "-i",
+            img_path,
+            "-o",
+            saida,
+            "--posicao",
+            "40,40",
+            "--tamanho",
+            "60,60",
+        ]
+    )
     assert codigo == 0
     doc = pymupdf.open(saida)
     assert len(doc[0].get_images()) == 1
@@ -264,12 +359,15 @@ def test_cli_adicionar_imagem(tmp_path, pdf_simples, capsys):
 
 def test_cli_destacar_texto_com_ocorrencias(tmp_path, pdf_simples, capsys):
     saida = str(tmp_path / "destacado.pdf")
-    codigo = main([
-        "destacar-texto",
-        pdf_simples,
-        "Pagina",
-        "-o", saida,
-    ])
+    codigo = main(
+        [
+            "destacar-texto",
+            pdf_simples,
+            "Pagina",
+            "-o",
+            saida,
+        ]
+    )
     assert codigo == 0
     out = capsys.readouterr().out
     assert "ocorrência(s)" in out
@@ -283,12 +381,15 @@ def test_cli_destacar_texto_com_ocorrencias(tmp_path, pdf_simples, capsys):
 
 def test_cli_destacar_texto_sem_ocorrencias(tmp_path, pdf_simples, capsys):
     saida = str(tmp_path / "sem_destaque.pdf")
-    codigo = main([
-        "destacar-texto",
-        pdf_simples,
-        "INEXISTENTE_XYZ_12345",
-        "-o", saida,
-    ])
+    codigo = main(
+        [
+            "destacar-texto",
+            pdf_simples,
+            "INEXISTENTE_XYZ_12345",
+            "-o",
+            saida,
+        ]
+    )
     assert codigo == 0
     out = capsys.readouterr().out
     assert "Nenhuma ocorrência" in out
@@ -296,15 +397,166 @@ def test_cli_destacar_texto_sem_ocorrencias(tmp_path, pdf_simples, capsys):
 
 def test_cli_destacar_texto_sublinhado_e_paginas(tmp_path, pdf_simples, capsys):
     saida = str(tmp_path / "sublinhado.pdf")
-    codigo = main([
-        "destacar-texto",
-        pdf_simples,
-        "Texto",
-        "-o", saida,
-        "-p", "1-2",
-        "--tipo", "sublinhado",
-        "--cor", "azul",
-    ])
+    codigo = main(
+        [
+            "destacar-texto",
+            pdf_simples,
+            "Texto",
+            "-o",
+            saida,
+            "-p",
+            "1-2",
+            "--tipo",
+            "sublinhado",
+            "--cor",
+            "azul",
+        ]
+    )
     assert codigo == 0
     out = capsys.readouterr().out
     assert "ocorrência(s)" in out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Testes CLI — Formulários (AcroForm)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_cli_listar_campos(pdf_com_formulario_cli, capsys):
+    codigo = main(["listar-campos", pdf_com_formulario_cli])
+    assert codigo == 0
+    out = capsys.readouterr().out
+    assert "nome" in out
+    assert "ativo" in out
+    assert "cidade" in out
+    assert "texto" in out  # tipo do campo
+    assert "checkbox" in out
+    assert "Total:" in out
+
+
+def test_cli_listar_campos_alias(pdf_com_formulario_cli, capsys):
+    codigo = main(["listar_campos", pdf_com_formulario_cli])
+    assert codigo == 0
+    out = capsys.readouterr().out
+    assert "Total:" in out
+
+
+def test_cli_listar_campos_pdf_sem_formulario(tmp_path, pdf_simples, capsys):
+    codigo = main(["listar-campos", pdf_simples])
+    assert codigo == 1
+    captured = capsys.readouterr()
+    assert "Erro:" in captured.err
+    assert "não contém formulário" in captured.err
+
+
+def test_cli_preencher(tmp_path, pdf_com_formulario_cli, capsys):
+    saida = str(tmp_path / "preenchido_cli.pdf")
+    codigo = main(
+        [
+            "preencher",
+            pdf_com_formulario_cli,
+            "--campo",
+            "nome=João Silva",
+            "--campo",
+            "cidade=São Paulo",
+            "-o",
+            saida,
+        ]
+    )
+    assert codigo == 0
+    out = capsys.readouterr().out
+    assert "Sucesso" in out
+    assert "Formulário preenchido" in out
+    assert os.path.isfile(saida)
+
+
+def test_cli_preencher_multiplos_campos(tmp_path, pdf_com_formulario_cli, capsys):
+    saida = str(tmp_path / "preenchido_multi_cli.pdf")
+    codigo = main(
+        [
+            "preencher",
+            pdf_com_formulario_cli,
+            "--campo",
+            "nome=Maria",
+            "--campo",
+            "cidade=Rio",
+            "--campo",
+            "ativo=Yes",
+            "-o",
+            saida,
+        ]
+    )
+    assert codigo == 0
+    assert os.path.isfile(saida)
+
+    # Verificar que os valores foram salvos
+    from perfectdf import listar_campos
+
+    campos = listar_campos(saida)
+    por_nome = {c["nome"]: c for c in campos}
+    assert por_nome["nome"]["valor"] == "Maria"
+    assert por_nome["cidade"]["valor"] == "Rio"
+
+
+def test_cli_preencher_campo_inexistente(tmp_path, pdf_com_formulario_cli, capsys):
+    saida = str(tmp_path / "saida.pdf")
+    codigo = main(
+        [
+            "preencher",
+            pdf_com_formulario_cli,
+            "--campo",
+            "campo_invalido=teste",
+            "-o",
+            saida,
+        ]
+    )
+    assert codigo == 1
+    captured = capsys.readouterr()
+    assert "Erro:" in captured.err
+    assert "não encontrado" in captured.err
+
+
+def test_cli_preencher_formato_invalido(tmp_path, pdf_com_formulario_cli, capsys):
+    saida = str(tmp_path / "saida.pdf")
+    codigo = main(
+        [
+            "preencher",
+            pdf_com_formulario_cli,
+            "--campo",
+            "sem_igual",
+            "-o",
+            saida,
+        ]
+    )
+    assert codigo == 1
+    captured = capsys.readouterr()
+    assert "Erro:" in captured.err
+    assert "nome=valor" in captured.err
+
+
+def test_cli_achatar(tmp_path, pdf_com_formulario_cli, capsys):
+    saida = str(tmp_path / "achatado_cli.pdf")
+    codigo = main(["achatar", pdf_com_formulario_cli, "-o", saida])
+    assert codigo == 0
+    out = capsys.readouterr().out
+    assert "Sucesso" in out
+    assert "achatado" in out
+    assert os.path.isfile(saida)
+
+    # Verificar que os widgets foram removidos
+    doc = pymupdf.open(saida)
+    total_widgets = 0
+    for page in doc:
+        for _ in page.widgets():
+            total_widgets += 1
+    doc.close()
+    assert total_widgets == 0
+
+
+def test_cli_achatar_pdf_sem_formulario(tmp_path, pdf_simples, capsys):
+    saida = str(tmp_path / "saida.pdf")
+    codigo = main(["achatar", pdf_simples, "-o", saida])
+    assert codigo == 1
+    captured = capsys.readouterr()
+    assert "Erro:" in captured.err
+    assert "não contém formulário" in captured.err

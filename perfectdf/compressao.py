@@ -3,7 +3,9 @@ import os
 from perfectdf.comum import abrir_pdf
 
 
-def comprimir_pdf(caminho: str, saida: str, nivel: str = "medio") -> dict:
+def comprimir_pdf(
+    caminho: str, saida: str, nivel: str = "medio"
+) -> dict[str, int | float | bool]:
     """Comprime um documento PDF reduzindo o tamanho do arquivo final.
 
     Aplica diferentes estratégias de compressão conforme o nível selecionado:

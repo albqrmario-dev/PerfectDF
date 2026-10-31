@@ -2,6 +2,7 @@ import os
 import shutil
 import tempfile
 import warnings
+from typing import cast
 
 import pymupdf
 
@@ -93,7 +94,8 @@ def extrair_texto(caminho: str, paginas: list[int] | str | None = None) -> str:
         partes = []
         tem_texto = False
         for pagina in paginas_alvo:
-            texto_pagina = doc[pagina - 1].get_text()
+            # PyMuPDF omits the return overload for the explicit text format.
+            texto_pagina = cast(str, doc[pagina - 1].get_text("text"))
             if texto_pagina.strip():
                 tem_texto = True
             partes.append(f"--- Página {pagina} ---\n{texto_pagina.strip()}")
@@ -140,7 +142,9 @@ def adicionar_texto(
                     texto vazio, posição negativa ou fora da página, tamanho <= 0 ou cor inválida.
     """
     if not isinstance(pdf, str) or not pdf.strip():
-        raise ValueError("O caminho do arquivo de origem deve ser uma string não vazia.")
+        raise ValueError(
+            "O caminho do arquivo de origem deve ser uma string não vazia."
+        )
     if not os.path.isfile(pdf):
         raise ValueError(f"O arquivo de origem não foi encontrado: '{pdf}'.")
 
@@ -148,24 +152,38 @@ def adicionar_texto(
         raise ValueError("O caminho do arquivo de saída deve ser uma string não vazia.")
 
     if isinstance(pagina, bool) or not isinstance(pagina, int):
-        raise ValueError("O número da página deve ser um número inteiro.")
+        raise ValueError("O número da página deve ser um número inteiro.")  # noqa: TRY004
     if pagina < 1:
-        raise ValueError(f"O número da página deve ser maior ou igual a 1 (recebido: {pagina}).")
+        raise ValueError(
+            f"O número da página deve ser maior ou igual a 1 (recebido: {pagina})."
+        )
 
     if not isinstance(texto, str) or not texto.strip():
         raise ValueError("O texto a ser inserido não pode estar vazio.")
 
     if not isinstance(posicao, (tuple, list)) or len(posicao) != 2:
-        raise ValueError("A posição deve ser uma tupla ou lista com exatamente 2 coordenadas (x, y).")
+        raise ValueError(
+            "A posição deve ser uma tupla ou lista com exatamente 2 coordenadas (x, y)."
+        )
 
     for coord in posicao:
         if isinstance(coord, bool) or not isinstance(coord, (int, float)):
-            raise ValueError(f"Cada coordenada da posição deve ser um número (recebido: {coord!r}).")
+            raise ValueError(  # noqa: TRY004
+                f"Cada coordenada da posição deve ser um número (recebido: {coord!r})."
+            )
         if coord < 0:
-            raise ValueError(f"As coordenadas da posição não podem ser negativas (recebido: {coord!r}).")
+            raise ValueError(
+                f"As coordenadas da posição não podem ser negativas (recebido: {coord!r})."
+            )
 
-    if isinstance(tamanho, bool) or not isinstance(tamanho, (int, float)) or tamanho <= 0:
-        raise ValueError(f"O tamanho da fonte deve ser maior que zero (recebido: {tamanho}).")
+    if (
+        isinstance(tamanho, bool)
+        or not isinstance(tamanho, (int, float))
+        or tamanho <= 0
+    ):
+        raise ValueError(
+            f"O tamanho da fonte deve ser maior que zero (recebido: {tamanho})."
+        )
 
     # Resolução da cor
     cor_rgb: tuple[float, float, float]
@@ -178,23 +196,29 @@ def adicionar_texto(
         cor_rgb = _CORES_TEXTO[cor_limpa]
     elif isinstance(cor, (tuple, list)):
         if len(cor) != 3:
-            raise ValueError("A tupla de cor RGB deve conter exatamente 3 valores (R, G, B).")
+            raise ValueError(
+                "A tupla de cor RGB deve conter exatamente 3 valores (R, G, B)."
+            )
         valores = []
         for val in cor:
             if isinstance(val, bool) or not isinstance(val, (int, float)):
-                raise ValueError(f"Componente de cor inválido: {val!r}.")
+                raise ValueError(f"Componente de cor inválido: {val!r}.")  # noqa: TRY004
             if val < 0:
                 raise ValueError(f"Componente de cor não pode ser negativo: {val}.")
             valores.append(float(val))
         # Normalização se estiver na escala 0-255
         if any(v > 1.0 for v in valores):
             if any(v > 255.0 for v in valores):
-                raise ValueError("Os valores de cor RGB devem estar entre 0.0-1.0 ou 0-255.")
+                raise ValueError(
+                    "Os valores de cor RGB devem estar entre 0.0-1.0 ou 0-255."
+                )
             cor_rgb = (valores[0] / 255.0, valores[1] / 255.0, valores[2] / 255.0)
         else:
             cor_rgb = (valores[0], valores[1], valores[2])
     else:
-        raise ValueError("A cor deve ser uma string ou uma tupla RGB com 3 componentes.")
+        raise ValueError(  # noqa: TRY004
+            "A cor deve ser uma string ou uma tupla RGB com 3 componentes."
+        )
 
     # Resolução da fonte
     fonte_mupdf = _FONTES_MAP.get(fonte.lower().strip(), fonte)
@@ -202,7 +226,9 @@ def adicionar_texto(
     doc = abrir_pdf(pdf)
     try:
         if doc.needs_pass:
-            raise ValueError("O documento está protegido por senha. Remova a senha antes de adicionar texto.")
+            raise ValueError(
+                "O documento está protegido por senha. Remova a senha antes de adicionar texto."
+            )
 
         total_paginas = doc.page_count
         if total_paginas == 0:
@@ -247,7 +273,9 @@ def adicionar_texto(
         else:
             # Salvar no mesmo arquivo com segurança atômica
             dir_temp = os.path.dirname(os.path.abspath(pdf))
-            with tempfile.NamedTemporaryFile(dir=dir_temp, delete=False, suffix=".pdf") as tmp:
+            with tempfile.NamedTemporaryFile(
+                dir=dir_temp, delete=False, suffix=".pdf"
+            ) as tmp:
                 temp_name = tmp.name
             doc.save(temp_name)
             doc.close()

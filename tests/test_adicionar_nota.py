@@ -13,6 +13,7 @@ _ANNOT_TEXT = pymupdf.PDF_ANNOT_TEXT  # 0
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def pdf_simples(tmp_path):
     """PDF com 3 páginas sem rotação."""
@@ -53,6 +54,7 @@ def pdf_protegido(tmp_path):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _coletar_notas(caminho):
     """Retorna lista de (pagina_base1, tipo_num, content) de todas as anotações."""
     doc = pymupdf.open(caminho)
@@ -68,6 +70,7 @@ def _coletar_notas(caminho):
 # Comportamento principal
 # ---------------------------------------------------------------------------
 
+
 class TestAdicionarNotaBasico:
     def test_cria_nota_e_retorna_caminho(self, pdf_simples, tmp_path):
         saida = str(tmp_path / "saida.pdf")
@@ -82,7 +85,7 @@ class TestAdicionarNotaBasico:
         notas = _coletar_notas(saida)
         assert len(notas) == 1
         pagina, tipo, content = notas[0]
-        assert tipo == _ANNOT_TEXT        # sticky note
+        assert tipo == _ANNOT_TEXT  # sticky note
         assert pagina == 1
         assert "Conteúdo da nota" in content
 
@@ -92,7 +95,7 @@ class TestAdicionarNotaBasico:
 
         notas = _coletar_notas(saida)
         assert len(notas) == 1
-        assert notas[0][0] == 2   # página base 1
+        assert notas[0][0] == 2  # página base 1
 
     def test_original_nao_alterado(self, pdf_simples, tmp_path):
         saida = str(tmp_path / "saida.pdf")
@@ -101,7 +104,9 @@ class TestAdicionarNotaBasico:
         # Original não deve ter anotações
         assert _coletar_notas(pdf_simples) == []
 
-    def test_notas_em_paginas_diferentes_via_chamadas_separadas(self, pdf_simples, tmp_path):
+    def test_notas_em_paginas_diferentes_via_chamadas_separadas(
+        self, pdf_simples, tmp_path
+    ):
         # Adicionar nota na pág 1 e depois na pág 3 (passando o output como input)
         intermediario = str(tmp_path / "inter.pdf")
         saida = str(tmp_path / "saida.pdf")
@@ -145,7 +150,9 @@ class TestAdicionarNotaRotacao:
         """Em página com rotation=90, as dimensões visuais se invertem.
         (50, 50) deve ser aceito e gerar uma nota válida."""
         saida = str(tmp_path / "saida.pdf")
-        adicionar_nota(pdf_rotacionado, saida, 1, "nota em página girada", posicao=(50, 50))
+        adicionar_nota(
+            pdf_rotacionado, saida, 1, "nota em página girada", posicao=(50, 50)
+        )
 
         notas = _coletar_notas(saida)
         assert len(notas) == 1
@@ -167,7 +174,10 @@ class TestAdicionarNotaRotacao:
         # largura_visual = altura_fisica; pedir x > altura_fisica deve falhar
         with pytest.raises(ValueError, match="fora dos limites"):
             adicionar_nota(
-                pdf_rotacionado, saida, 1, "nota",
+                pdf_rotacionado,
+                saida,
+                1,
+                "nota",
                 posicao=(altura_fisica + 1, 50),
             )
 
@@ -175,7 +185,10 @@ class TestAdicionarNotaRotacao:
         # mas ultrapassa a altura_visual (= largura_fisica)
         with pytest.raises(ValueError, match="fora dos limites"):
             adicionar_nota(
-                pdf_rotacionado, saida, 1, "nota",
+                pdf_rotacionado,
+                saida,
+                1,
+                "nota",
                 posicao=(50, largura_fisica + 1),
             )
 
@@ -183,6 +196,7 @@ class TestAdicionarNotaRotacao:
 # ---------------------------------------------------------------------------
 # Validações de entrada
 # ---------------------------------------------------------------------------
+
 
 class TestAdicionarNotaValidacoes:
     def test_caminho_vazio(self, tmp_path):
@@ -235,23 +249,33 @@ class TestAdicionarNotaValidacoes:
 
     def test_posicao_nao_tuple(self, pdf_simples, tmp_path):
         with pytest.raises(ValueError, match="tupla"):
-            adicionar_nota(pdf_simples, str(tmp_path / "s.pdf"), 1, "nota", posicao=[10, 10])
+            adicionar_nota(
+                pdf_simples, str(tmp_path / "s.pdf"), 1, "nota", posicao=[10, 10]
+            )
 
     def test_posicao_tamanho_errado(self, pdf_simples, tmp_path):
         with pytest.raises(ValueError, match="2 valores"):
-            adicionar_nota(pdf_simples, str(tmp_path / "s.pdf"), 1, "nota", posicao=(10,))
+            adicionar_nota(
+                pdf_simples, str(tmp_path / "s.pdf"), 1, "nota", posicao=(10,)
+            )
 
     def test_posicao_coordenada_booleana(self, pdf_simples, tmp_path):
         with pytest.raises(ValueError, match="número"):
-            adicionar_nota(pdf_simples, str(tmp_path / "s.pdf"), 1, "nota", posicao=(True, 50))
+            adicionar_nota(
+                pdf_simples, str(tmp_path / "s.pdf"), 1, "nota", posicao=(True, 50)
+            )
 
     def test_posicao_coordenada_negativa(self, pdf_simples, tmp_path):
         with pytest.raises(ValueError, match="negativas"):
-            adicionar_nota(pdf_simples, str(tmp_path / "s.pdf"), 1, "nota", posicao=(-1, 50))
+            adicionar_nota(
+                pdf_simples, str(tmp_path / "s.pdf"), 1, "nota", posicao=(-1, 50)
+            )
 
     def test_posicao_fora_dos_limites(self, pdf_simples, tmp_path):
         with pytest.raises(ValueError, match="fora dos limites"):
-            adicionar_nota(pdf_simples, str(tmp_path / "s.pdf"), 1, "nota", posicao=(9999, 9999))
+            adicionar_nota(
+                pdf_simples, str(tmp_path / "s.pdf"), 1, "nota", posicao=(9999, 9999)
+            )
 
     def test_pdf_protegido(self, pdf_protegido, tmp_path):
         with pytest.raises(ValueError, match="protegido por senha"):

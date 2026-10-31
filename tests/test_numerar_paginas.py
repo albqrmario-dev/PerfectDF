@@ -75,10 +75,10 @@ def test_numerar_paginas_selecionadas(tmp_path):
     numerar_paginas(str(origem), str(saida_lista), paginas=[2, 4])
     doc_l = abrir_pdf(str(saida_lista))
     assert "Página 1 de 2" not in doc_l[0].get_text()  # Pág 1 sem numeração
-    assert "Página 1 de 2" in doc_l[1].get_text()      # Pág 2 tem 1 de 2
-    assert "de 2" not in doc_l[2].get_text()           # Pág 3 sem numeração
-    assert "Página 2 de 2" in doc_l[3].get_text()      # Pág 4 tem 2 de 2
-    assert "de 2" not in doc_l[4].get_text()           # Pág 5 sem numeração
+    assert "Página 1 de 2" in doc_l[1].get_text()  # Pág 2 tem 1 de 2
+    assert "de 2" not in doc_l[2].get_text()  # Pág 3 sem numeração
+    assert "Página 2 de 2" in doc_l[3].get_text()  # Pág 4 tem 2 de 2
+    assert "de 2" not in doc_l[4].get_text()  # Pág 5 sem numeração
     doc_l.close()
 
     # Numerando páginas 1, 3 e 5 via string (total selecionadas = 3)

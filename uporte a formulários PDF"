@@ -1,0 +1,22 @@
+ README.md                      |  92 [32m+++++++++[m[31m---[m
+ perfectdf/__init__.py          |   8 [32m++[m
+ perfectdf/__main__.py          |   1 [32m+[m
+ perfectdf/anotacoes.py         |  46 [32m+++[m[31m---[m
+ perfectdf/cli.py               | 159 [32m++++++++++++++++++[m[31m---[m
+ perfectdf/compressao.py        |   4 [32m+[m[31m-[m
+ perfectdf/comum.py             |   4 [32m+[m[31m-[m
+ perfectdf/conversao.py         |  53 [32m+++++[m[31m--[m
+ perfectdf/metadados.py         |  10 [32m+[m[31m-[m
+ perfectdf/paginas.py           |   4 [32m+[m[31m-[m
+ perfectdf/seguranca.py         |   4 [32m+[m[31m-[m
+ perfectdf/texto.py             |  58 [32m++++++[m[31m--[m
+ tests/test_adicionar_imagem.py |   1 [32m+[m
+ tests/test_adicionar_nota.py   |  46 [32m++++[m[31m--[m
+ tests/test_adicionar_texto.py  |   1 [32m+[m
+ tests/test_cli.py              | 364 [32m++++++++++++++++++++++++++++++++++++++++[m[31m--------[m
+ tests/test_comprimir_pdf.py    |   1 [32m+[m
+ tests/test_destacar_texto.py   |  58 [32m+++++[m[31m---[m
+ tests/test_imagens.py          |   1 [32m+[m
+ tests/test_modularizacao.py    |  48 [32m++++++[m[31m-[m
+ tests/test_numerar_paginas.py  |   8 [32m+[m[31m-[m
+ 21 files changed, 779 insertions(+), 192 deletions(-)

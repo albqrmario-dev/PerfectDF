@@ -49,7 +49,7 @@ def proteger_pdf(
 
         doc.save(
             saida,
-            encryption=pymupdf.PDF_ENCRYPT_AES_256,  # type: ignore[attr-defined]
+            encryption=pymupdf.PDF_ENCRYPT_AES_256,  # pyright: ignore[reportAttributeAccessIssue]  # PyMuPDF exports this runtime constant without declaring it.
             user_pw=senha_usuario,
             owner_pw=senha_dono,
         )
@@ -99,7 +99,7 @@ def remover_senha(caminho: str, senha: str, saida: str) -> str:
         if auth_resultado == 0:
             raise ValueError("A senha informada está incorreta.")
 
-        doc.save(saida, encryption=pymupdf.PDF_ENCRYPT_NONE)  # type: ignore[attr-defined]
+        doc.save(saida, encryption=pymupdf.PDF_ENCRYPT_NONE)  # pyright: ignore[reportAttributeAccessIssue]  # PyMuPDF exports this runtime constant without declaring it.
         return saida
     finally:
         doc.close()

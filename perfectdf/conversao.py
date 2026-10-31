@@ -142,7 +142,7 @@ def imagens_para_pdf(imagens: list[str], saida: str) -> str:
         raise ValueError("O caminho do arquivo de saída deve ser uma string não vazia.")
 
     if not isinstance(imagens, (list, tuple)):
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004
             "A coleção de imagens deve ser fornecida em uma lista ou tupla."
         )
     if len(imagens) == 0:
@@ -209,7 +209,9 @@ def adicionar_imagem(
                     se tamanho for menor ou igual a zero, ou se o PDF estiver protegido por senha.
     """
     if not isinstance(pdf, str) or not pdf.strip():
-        raise ValueError("O caminho do arquivo de origem deve ser uma string não vazia.")
+        raise ValueError(
+            "O caminho do arquivo de origem deve ser uma string não vazia."
+        )
     if not os.path.isfile(pdf):
         raise ValueError(f"O arquivo de origem não foi encontrado: '{pdf}'.")
 
@@ -222,18 +224,26 @@ def adicionar_imagem(
         raise ValueError("O caminho do arquivo de saída deve ser uma string não vazia.")
 
     if isinstance(pagina, bool) or not isinstance(pagina, int):
-        raise ValueError("O número da página deve ser um número inteiro.")
+        raise ValueError("O número da página deve ser um número inteiro.")  # noqa: TRY004
     if pagina < 1:
-        raise ValueError(f"O número da página deve ser maior ou igual a 1 (recebido: {pagina}).")
+        raise ValueError(
+            f"O número da página deve ser maior ou igual a 1 (recebido: {pagina})."
+        )
 
     if not isinstance(posicao, (tuple, list)) or len(posicao) != 2:
-        raise ValueError("A posição deve ser uma tupla ou lista com exatamente 2 coordenadas (x, y).")
+        raise ValueError(
+            "A posição deve ser uma tupla ou lista com exatamente 2 coordenadas (x, y)."
+        )
 
     for coord in posicao:
         if isinstance(coord, bool) or not isinstance(coord, (int, float)):
-            raise ValueError(f"Cada coordenada da posição deve ser um número (recebido: {coord!r}).")
+            raise ValueError(  # noqa: TRY004
+                f"Cada coordenada da posição deve ser um número (recebido: {coord!r})."
+            )
         if coord < 0:
-            raise ValueError(f"As coordenadas da posição não podem ser negativas (recebido: {coord!r}).")
+            raise ValueError(
+                f"As coordenadas da posição não podem ser negativas (recebido: {coord!r})."
+            )
 
     # Validar e abrir a imagem para extrair dimensões
     try:
@@ -242,31 +252,43 @@ def adicionar_imagem(
         img_altura_orig = float(pix.height)
         del pix
     except Exception as e:
-        raise ValueError(f"O arquivo '{imagem}' não é uma imagem válida ou legível.") from e
+        raise ValueError(
+            f"O arquivo '{imagem}' não é uma imagem válida ou legível."
+        ) from e
 
     # Resolução de dimensões da imagem a ser inserida
     if tamanho is None:
         largura, altura = img_largura_orig, img_altura_orig
     elif isinstance(tamanho, (tuple, list)):
         if len(tamanho) != 2:
-            raise ValueError("O tamanho deve conter exatamente 2 valores (largura, altura).")
+            raise ValueError(
+                "O tamanho deve conter exatamente 2 valores (largura, altura)."
+            )
         for val in tamanho:
             if isinstance(val, bool) or not isinstance(val, (int, float)) or val <= 0:
-                raise ValueError(f"As dimensões de tamanho devem ser números maiores que zero (recebido: {val!r}).")
+                raise ValueError(
+                    f"As dimensões de tamanho devem ser números maiores que zero (recebido: {val!r})."
+                )
         largura, altura = float(tamanho[0]), float(tamanho[1])
     elif isinstance(tamanho, (int, float)) and not isinstance(tamanho, bool):
         if tamanho <= 0:
-            raise ValueError(f"A largura informada deve ser maior que zero (recebido: {tamanho}).")
+            raise ValueError(
+                f"A largura informada deve ser maior que zero (recebido: {tamanho})."
+            )
         largura = float(tamanho)
         proporcao = img_altura_orig / img_largura_orig
         altura = largura * proporcao
     else:
-        raise ValueError("O tamanho deve ser uma tupla (largura, altura) ou um número positivo.")
+        raise ValueError(
+            "O tamanho deve ser uma tupla (largura, altura) ou um número positivo."
+        )
 
     doc = abrir_pdf(pdf)
     try:
         if doc.needs_pass:
-            raise ValueError("O documento está protegido por senha. Remova a senha antes de adicionar imagens.")
+            raise ValueError(
+                "O documento está protegido por senha. Remova a senha antes de adicionar imagens."
+            )
 
         total_paginas = doc.page_count
         if total_paginas == 0:
@@ -304,7 +326,9 @@ def adicionar_imagem(
             doc.save(saida)
         else:
             dir_temp = os.path.dirname(os.path.abspath(pdf))
-            with tempfile.NamedTemporaryFile(dir=dir_temp, delete=False, suffix=".pdf") as tmp:
+            with tempfile.NamedTemporaryFile(
+                dir=dir_temp, delete=False, suffix=".pdf"
+            ) as tmp:
                 temp_name = tmp.name
             doc.save(temp_name)
             doc.close()
@@ -315,4 +339,3 @@ def adicionar_imagem(
     finally:
         if not doc.is_closed:
             doc.close()
-

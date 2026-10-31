@@ -89,7 +89,7 @@ def girar_paginas(caminho: str, paginas: list[int], graus: int, saida: str) -> s
         raise ValueError(f"O arquivo de origem não foi encontrado: '{caminho}'.")
 
     if isinstance(graus, bool) or not isinstance(graus, int):
-        raise ValueError("O valor de rotação (graus) deve ser um número inteiro.")
+        raise ValueError("O valor de rotação (graus) deve ser um número inteiro.")  # noqa: TRY004
     if graus % 90 != 0:
         raise ValueError(
             f"O valor de rotação deve ser um múltiplo de 90 graus (recebido: {graus})."
@@ -227,7 +227,7 @@ def reordenar_paginas(caminho: str, ordem: str | list[int], saida: str) -> str:
     elif isinstance(ordem, (list, tuple)):
         paginas = list(ordem)
     else:
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004
             "A especificação de ordem deve ser uma string ou lista de inteiros."
         )
 

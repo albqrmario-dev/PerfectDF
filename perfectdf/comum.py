@@ -13,7 +13,7 @@ def parsear_paginas(texto: str) -> list[int]:
     """
 
     if not isinstance(texto, str):
-        raise ValueError("A especificação de páginas deve ser uma string.")
+        raise ValueError("A especificação de páginas deve ser uma string.")  # noqa: TRY004
 
     texto_limpo = texto.strip()
     if not texto_limpo:
@@ -93,7 +93,7 @@ def parsear_ordem(texto: str) -> list[int]:
         ValueError: Se a especificação for inválida, vazia ou contiver valores menores que 1.
     """
     if not isinstance(texto, str):
-        raise ValueError("A especificação de ordem deve ser uma string.")
+        raise ValueError("A especificação de ordem deve ser uma string.")  # noqa: TRY004
 
     texto_limpo = texto.strip()
     if not texto_limpo:

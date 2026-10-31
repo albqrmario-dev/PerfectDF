@@ -1,9 +1,19 @@
 import os
 import string
+from typing import TypedDict, cast
 
 import pymupdf
 
 from perfectdf.comum import abrir_pdf, parsear_paginas
+
+
+class _ResultadoDestaqueBase(TypedDict):
+    total_ocorrencias: int
+    ocorrencias_por_pagina: dict[int, int]
+
+
+class _ResultadoDestaque(_ResultadoDestaqueBase, total=False):
+    aviso: str
 
 
 def adicionar_marca_dagua(
@@ -69,7 +79,7 @@ def adicionar_marca_dagua(
         )
 
     if isinstance(angulo, bool) or not isinstance(angulo, (int, float)):
-        raise ValueError(f"O valor do ângulo deve ser um número (recebido: {angulo}).")
+        raise ValueError(f"O valor do ângulo deve ser um número (recebido: {angulo}).")  # noqa: TRY004
 
     doc = abrir_pdf(caminho)
     try:
@@ -215,7 +225,7 @@ def numerar_paginas(
         )
 
     if isinstance(inicio, bool) or not isinstance(inicio, int):
-        raise ValueError("O valor de início da numeração deve ser um número inteiro.")
+        raise ValueError("O valor de início da numeração deve ser um número inteiro.")  # noqa: TRY004
 
     if (
         isinstance(tamanho_fonte, bool)
@@ -310,9 +320,9 @@ def destacar_texto(
     termo: str,
     paginas: list[int] | str | None = None,
     tipo: str = "destaque",
-    cor: str | tuple = "amarelo",
+    cor: str | tuple[float, float, float] = "amarelo",
     ignorar_maiusculas: bool = True,
-) -> dict:
+) -> _ResultadoDestaque:
     """Busca um termo de texto em um documento PDF e adiciona anotações de destaque nas ocorrências encontradas.
 
     Limitação conhecida: termos quebrados entre duas linhas (com hifenização ou sem)
@@ -345,11 +355,11 @@ def destacar_texto(
                     se alguma página for inválida ou se o PDF estiver protegido por senha.
     """
     _CORES = {
-        "amarelo":  (1.0, 1.0, 0.0),
-        "verde":    (0.0, 0.8, 0.0),
-        "azul":     (0.0, 0.5, 1.0),
-        "rosa":     (1.0, 0.4, 0.7),
-        "laranja":  (1.0, 0.5, 0.0),
+        "amarelo": (1.0, 1.0, 0.0),
+        "verde": (0.0, 0.8, 0.0),
+        "azul": (0.0, 0.5, 1.0),
+        "rosa": (1.0, 0.4, 0.7),
+        "laranja": (1.0, 0.5, 0.0),
         "vermelho": (1.0, 0.0, 0.0),
     }
     _TIPOS_VALIDOS = {"destaque", "sublinhado", "riscado"}
@@ -378,9 +388,7 @@ def destacar_texto(
     cor_rgb: tuple[float, float, float]
     if isinstance(cor, str):
         if cor not in _CORES:
-            raise ValueError(
-                f"Cor inválida: '{cor}'. Cores aceitas: {sorted(_CORES)}."
-            )
+            raise ValueError(f"Cor inválida: '{cor}'. Cores aceitas: {sorted(_CORES)}.")
         cor_rgb = _CORES[cor]
     elif isinstance(cor, tuple):
         if len(cor) != 3:
@@ -399,7 +407,7 @@ def destacar_texto(
                 )
         cor_rgb = (float(cor[0]), float(cor[1]), float(cor[2]))
     else:
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004
             "A cor deve ser um nome em string ou uma tupla RGB com valores entre 0.0 e 1.0."
         )
 
@@ -448,14 +456,16 @@ def destacar_texto(
 
         for pagina in paginas_unicas:
             page = doc[pagina - 1]
-            total_caracteres_examinados += len(page.get_text().strip())
+            # PyMuPDF omits the return overload for the explicit text format.
+            texto_pagina = cast(str, page.get_text("text"))
+            total_caracteres_examinados += len(texto_pagina.strip())
 
             retangulos_raw = page.search_for(termo)
             if not ignorar_maiusculas:
                 retangulos = [
                     rect
                     for rect in retangulos_raw
-                    if page.get_text("text", clip=rect).strip() == termo
+                    if cast(str, page.get_text("text", clip=rect)).strip() == termo
                 ]
             else:
                 retangulos = retangulos_raw
@@ -476,7 +486,7 @@ def destacar_texto(
                     annot.set_colors(stroke=cor_rgb)
                     annot.update()
 
-        resultado: dict = {
+        resultado: _ResultadoDestaque = {
             "total_ocorrencias": total_ocorrencias,
             "ocorrencias_por_pagina": ocorrencias_por_pagina,
         }
@@ -539,7 +549,7 @@ def adicionar_nota(
         raise ValueError(f"O arquivo de origem não foi encontrado: '{caminho}'.")
 
     if isinstance(pagina, bool) or not isinstance(pagina, int):
-        raise ValueError("O número da página deve ser um número inteiro.")
+        raise ValueError("O número da página deve ser um número inteiro.")  # noqa: TRY004
     if pagina < 1:
         raise ValueError(
             f"O número da página deve ser maior ou igual a 1 (recebido: {pagina})."
@@ -554,7 +564,7 @@ def adicionar_nota(
         )
     for coord in posicao:
         if isinstance(coord, bool) or not isinstance(coord, (int, float)):
-            raise ValueError(
+            raise ValueError(  # noqa: TRY004
                 f"Cada coordenada da posição deve ser um número (recebido: {coord!r})."
             )
         if coord < 0:

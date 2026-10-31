@@ -7,8 +7,8 @@ import pytest
 from perfectdf.core import destacar_texto
 
 # Constantes de tipo de anotação do PyMuPDF
-_HIGHLIGHT = pymupdf.PDF_ANNOT_HIGHLIGHT   # 8
-_UNDERLINE = pymupdf.PDF_ANNOT_UNDERLINE   # 9
+_HIGHLIGHT = pymupdf.PDF_ANNOT_HIGHLIGHT  # 8
+_UNDERLINE = pymupdf.PDF_ANNOT_UNDERLINE  # 9
 _STRIKEOUT = pymupdf.PDF_ANNOT_STRIKE_OUT  # 11
 
 
@@ -16,15 +16,16 @@ _STRIKEOUT = pymupdf.PDF_ANNOT_STRIKE_OUT  # 11
 # Fixture: PDF com texto em 3 páginas
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def pdf_com_texto(tmp_path):
     """Cria PDF de 3 páginas com textos variados para busca."""
     caminho = str(tmp_path / "origem.pdf")
     doc = pymupdf.open()
     textos = [
-        "Python é uma linguagem de programação.",         # pág 1: "Python" 1x
-        "python e PYTHON são a mesma palavra.",           # pág 2: "python"/"PYTHON" 2x (case-insensitive)
-        "Aqui não tem a palavra procurada.",              # pág 3: nada
+        "Python é uma linguagem de programação.",  # pág 1: "Python" 1x
+        "python e PYTHON são a mesma palavra.",  # pág 2: "python"/"PYTHON" 2x (case-insensitive)
+        "Aqui não tem a palavra procurada.",  # pág 3: nada
     ]
     for texto in textos:
         page = doc.new_page()
@@ -39,7 +40,7 @@ def pdf_escaneado(tmp_path):
     """Cria PDF de 1 página sem nenhum texto selecionável (simula scan)."""
     caminho = str(tmp_path / "scan.pdf")
     doc = pymupdf.open()
-    doc.new_page()   # página em branco — sem camada de texto
+    doc.new_page()  # página em branco — sem camada de texto
     doc.save(caminho)
     doc.close()
     return caminho
@@ -61,6 +62,7 @@ def pdf_protegido(tmp_path):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _abrir_e_coletar_annots(caminho):
     """Retorna lista de todas as anotações do PDF: (pagina_base1, tipo_num, tipo_str)."""
     doc = pymupdf.open(caminho)
@@ -80,6 +82,7 @@ def _contar_annots_por_tipo(caminho, tipo_num):
 # Testes de comportamento principal
 # ---------------------------------------------------------------------------
 
+
 class TestDestacarTextoDestaque:
     def test_destaque_basico_cria_anotacoes_corretas(self, pdf_com_texto, tmp_path):
         saida = str(tmp_path / "saida.pdf")
@@ -98,7 +101,9 @@ class TestDestacarTextoDestaque:
         assert len(tipos) == 3
         assert all(t == _HIGHLIGHT for t in tipos)
 
-    def test_destaque_pagina_3_sem_ocorrencias_nao_aparece(self, pdf_com_texto, tmp_path):
+    def test_destaque_pagina_3_sem_ocorrencias_nao_aparece(
+        self, pdf_com_texto, tmp_path
+    ):
         saida = str(tmp_path / "saida.pdf")
         res = destacar_texto(pdf_com_texto, saida, "Python")
 
@@ -216,7 +221,7 @@ class TestDestacarTextoZeroOcorrencias:
         assert res["total_ocorrencias"] == 0
         assert res["ocorrencias_por_pagina"] == {}
         assert not os.path.isfile(saida)
-        assert "aviso" not in res   # há texto no PDF, não é scan
+        assert "aviso" not in res  # há texto no PDF, não é scan
 
     def test_pdf_escaneado_inclui_aviso_no_retorno(self, pdf_escaneado, tmp_path):
         saida = str(tmp_path / "saida.pdf")
@@ -226,12 +231,15 @@ class TestDestacarTextoZeroOcorrencias:
         assert not os.path.isfile(saida)
         assert "aviso" in res
         assert "OCR" in res["aviso"]
-        assert "escaneado" in res["aviso"].lower() or "texto selecionável" in res["aviso"]
+        assert (
+            "escaneado" in res["aviso"].lower() or "texto selecionável" in res["aviso"]
+        )
 
 
 # ---------------------------------------------------------------------------
 # Testes de validação de entradas
 # ---------------------------------------------------------------------------
+
 
 class TestDestacarTextoValidacoes:
     def test_caminho_vazio(self, tmp_path):
@@ -252,7 +260,9 @@ class TestDestacarTextoValidacoes:
 
     def test_arquivo_nao_encontrado(self, tmp_path):
         with pytest.raises(ValueError, match="não foi encontrado"):
-            destacar_texto(str(tmp_path / "inexistente.pdf"), str(tmp_path / "s.pdf"), "termo")
+            destacar_texto(
+                str(tmp_path / "inexistente.pdf"), str(tmp_path / "s.pdf"), "termo"
+            )
 
     def test_termo_vazio(self, pdf_com_texto, tmp_path):
         with pytest.raises(ValueError, match="termo"):
@@ -264,7 +274,9 @@ class TestDestacarTextoValidacoes:
 
     def test_tipo_invalido(self, pdf_com_texto, tmp_path):
         with pytest.raises(ValueError, match="Tipo de anotação inválido"):
-            destacar_texto(pdf_com_texto, str(tmp_path / "s.pdf"), "Python", tipo="negrito")
+            destacar_texto(
+                pdf_com_texto, str(tmp_path / "s.pdf"), "Python", tipo="negrito"
+            )
 
     def test_cor_string_invalida(self, pdf_com_texto, tmp_path):
         with pytest.raises(ValueError, match="Cor inválida"):
@@ -272,15 +284,21 @@ class TestDestacarTextoValidacoes:
 
     def test_cor_tupla_tamanho_errado(self, pdf_com_texto, tmp_path):
         with pytest.raises(ValueError, match="3 componentes"):
-            destacar_texto(pdf_com_texto, str(tmp_path / "s.pdf"), "Python", cor=(1.0, 0.5))
+            destacar_texto(
+                pdf_com_texto, str(tmp_path / "s.pdf"), "Python", cor=(1.0, 0.5)
+            )
 
     def test_cor_tupla_valor_fora_do_intervalo(self, pdf_com_texto, tmp_path):
         with pytest.raises(ValueError, match="0.0 e 1.0"):
-            destacar_texto(pdf_com_texto, str(tmp_path / "s.pdf"), "Python", cor=(1.5, 0.0, 0.0))
+            destacar_texto(
+                pdf_com_texto, str(tmp_path / "s.pdf"), "Python", cor=(1.5, 0.0, 0.0)
+            )
 
     def test_cor_tupla_componente_booleano(self, pdf_com_texto, tmp_path):
         with pytest.raises(ValueError, match="0.0 e 1.0"):
-            destacar_texto(pdf_com_texto, str(tmp_path / "s.pdf"), "Python", cor=(True, 0.0, 0.0))
+            destacar_texto(
+                pdf_com_texto, str(tmp_path / "s.pdf"), "Python", cor=(True, 0.0, 0.0)
+            )
 
     def test_cor_tipo_invalido(self, pdf_com_texto, tmp_path):
         with pytest.raises(ValueError, match="nome em string ou uma tupla"):
@@ -288,15 +306,21 @@ class TestDestacarTextoValidacoes:
 
     def test_pagina_invalida_zero(self, pdf_com_texto, tmp_path):
         with pytest.raises(ValueError, match="Página inválida"):
-            destacar_texto(pdf_com_texto, str(tmp_path / "s.pdf"), "Python", paginas=[0])
+            destacar_texto(
+                pdf_com_texto, str(tmp_path / "s.pdf"), "Python", paginas=[0]
+            )
 
     def test_pagina_invalida_booleano(self, pdf_com_texto, tmp_path):
         with pytest.raises(ValueError, match="Página inválida"):
-            destacar_texto(pdf_com_texto, str(tmp_path / "s.pdf"), "Python", paginas=[True])
+            destacar_texto(
+                pdf_com_texto, str(tmp_path / "s.pdf"), "Python", paginas=[True]
+            )
 
     def test_pagina_invalida_fora_do_limite(self, pdf_com_texto, tmp_path):
         with pytest.raises(ValueError, match="Página inválida"):
-            destacar_texto(pdf_com_texto, str(tmp_path / "s.pdf"), "Python", paginas=[99])
+            destacar_texto(
+                pdf_com_texto, str(tmp_path / "s.pdf"), "Python", paginas=[99]
+            )
 
     def test_paginas_lista_vazia(self, pdf_com_texto, tmp_path):
         with pytest.raises(ValueError, match="vazia"):
