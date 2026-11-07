@@ -1,6 +1,7 @@
 """Testes para o backend web do PerfectDF."""
 
 import io
+import json
 from fastapi.testclient import TestClient
 import pymupdf
 
@@ -82,33 +83,127 @@ def test_inspecionar_arquivo_invalido() -> None:
     assert response_bad.status_code == 400
 
 
-def test_processar_comprimir() -> None:
-    """Testa a rota /api/processar na operação de compressão."""
-    pdf_bytes = _criar_pdf_exemplo(total_paginas=2)
+def test_rota_paginas_extrair_e_excluir() -> None:
+    """Testa endpoints de extrair e excluir páginas."""
+    pdf_bytes = _criar_pdf_exemplo(total_paginas=4)
+
+    # Extrair
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
-    data = {"operacao": "comprimir", "nivel": "medio"}
-    response = client.post("/api/processar", files=files, data=data)
+    res_ext = client.post("/api/paginas/extrair", files=files, data={"paginas": "1,3"})
+    assert res_ext.status_code == 200
+    doc_ext = pymupdf.open(stream=res_ext.content, filetype="pdf")
+    assert len(doc_ext) == 2
+    doc_ext.close()
 
+    # Excluir
+    files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
+    res_del = client.post("/api/paginas/excluir", files=files, data={"paginas": "1"})
+    assert res_del.status_code == 200
+    doc_del = pymupdf.open(stream=res_del.content, filetype="pdf")
+    assert len(doc_del) == 3
+    doc_del.close()
+
+
+def test_rota_paginas_juntar() -> None:
+    """Testa rota de unificação de múltiplos PDFs."""
+    pdf1 = _criar_pdf_exemplo(total_paginas=1)
+    pdf2 = _criar_pdf_exemplo(total_paginas=2)
+
+    files = [
+        ("arquivos", ("doc1.pdf", io.BytesIO(pdf1), "application/pdf")),
+        ("arquivos", ("doc2.pdf", io.BytesIO(pdf2), "application/pdf")),
+    ]
+    response = client.post("/api/paginas/juntar", files=files)
     assert response.status_code == 200
-    assert response.headers.get("content-type") == "application/pdf"
-    assert "attachment; filename=\"processado_doc.pdf\"" in response.headers.get("content-disposition", "")
-
-    # Valida que o PDF resultante é válido
-    result_doc = pymupdf.open(stream=response.content, filetype="pdf")
-    assert len(result_doc) == 2
-    result_doc.close()
+    doc_juntado = pymupdf.open(stream=response.content, filetype="pdf")
+    assert len(doc_juntado) == 3
+    doc_juntado.close()
 
 
-def test_processar_girar() -> None:
-    """Testa a rota /api/processar na operação de giro de páginas."""
+def test_rota_anotacoes() -> None:
+    """Testa marca d'água, numeração e nota."""
+    pdf_bytes = _criar_pdf_exemplo(total_paginas=2)
+
+    # Marca d'água
+    files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
+    res_marca = client.post("/api/anotacoes/marca-dagua", files=files, data={"texto": "CONFIDENCIAL"})
+    assert res_marca.status_code == 200
+
+    # Numeração
+    files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
+    res_num = client.post("/api/anotacoes/numerar", files=files, data={"formato": "Pág {n}"})
+    assert res_num.status_code == 200
+
+    # Adicionar Nota
+    files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
+    res_nota = client.post("/api/anotacoes/nota", files=files, data={"pagina": "1", "texto": "Nota teste"})
+    assert res_nota.status_code == 200
+
+
+def test_rota_texto_e_metadados() -> None:
+    """Testa extração de texto, adição de texto e edição de metadados."""
     pdf_bytes = _criar_pdf_exemplo(total_paginas=1)
-    files = {"arquivo": ("girar.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
-    data = {"operacao": "girar", "graus": "90"}
-    response = client.post("/api/processar", files=files, data=data)
 
-    assert response.status_code == 200
-    assert response.headers.get("content-type") == "application/pdf"
+    # Extrair texto
+    files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
+    res_txt = client.post("/api/texto/extrair", files=files)
+    assert res_txt.status_code == 200
+    assert "Página de teste 1" in res_txt.json()["texto"]
 
-    result_doc = pymupdf.open(stream=response.content, filetype="pdf")
-    assert result_doc[0].rotation == 90
-    result_doc.close()
+    # Adicionar texto
+    files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
+    res_add = client.post(
+        "/api/texto/adicionar",
+        files=files,
+        data={"pagina": "1", "texto": "Novo Texto Inserido", "pos_x": "50", "pos_y": "100"},
+    )
+    assert res_add.status_code == 200
+    doc_add = pymupdf.open(stream=res_add.content, filetype="pdf")
+    assert "Novo Texto Inserido" in doc_add[0].get_text()
+    doc_add.close()
+
+    # Editar metadados
+    files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
+    res_meta = client.post(
+        "/api/metadados/editar",
+        files=files,
+        data={"titulo": "Titulo Teste", "autor": "Autor Teste"},
+    )
+    assert res_meta.status_code == 200
+    doc_meta = pymupdf.open(stream=res_meta.content, filetype="pdf")
+    assert doc_meta.metadata.get("title") == "Titulo Teste"
+    assert doc_meta.metadata.get("author") == "Autor Teste"
+    doc_meta.close()
+
+
+def test_rota_seguranca_proteger_e_desproteger() -> None:
+    """Testa proteger com senha e remover senha."""
+    pdf_bytes = _criar_pdf_exemplo(total_paginas=1)
+
+    # Proteger
+    files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
+    res_prot = client.post(
+        "/api/seguranca/proteger",
+        files=files,
+        data={"senha_usuario": "senha123"},
+    )
+    assert res_prot.status_code == 200
+
+    # Tenta abrir com pymupdf sem senha (deve indicar criptografado)
+    doc_enc = pymupdf.open(stream=res_prot.content, filetype="pdf")
+    assert doc_enc.is_encrypted
+    assert not doc_enc.authenticate("errada")
+    assert doc_enc.authenticate("senha123")
+    doc_enc.close()
+
+    # Remover senha
+    files_rem = {"arquivo": ("prot.pdf", io.BytesIO(res_prot.content), "application/pdf")}
+    res_rem = client.post(
+        "/api/seguranca/remover-senha",
+        files=files_rem,
+        data={"senha": "senha123"},
+    )
+    assert res_rem.status_code == 200
+    doc_dec = pymupdf.open(stream=res_rem.content, filetype="pdf")
+    assert not doc_dec.is_encrypted
+    doc_dec.close()

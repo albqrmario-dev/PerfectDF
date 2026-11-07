@@ -1,11 +1,11 @@
-// PerfectDF - Frontend JS
+// PerfectDF - Frontend JS Completo
 document.addEventListener("DOMContentLoaded", () => {
   // Configuração do Worker local do pdf.js
   if (window.pdfjsLib) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.js";
   }
 
-  // Elementos de status e upload
+  // Elementos globais
   const badge = document.getElementById("api-status-badge");
   const dropZone = document.getElementById("drop-zone");
   const fileInput = document.getElementById("file-input");
@@ -14,13 +14,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const fileMeta = document.getElementById("file-meta");
   const btnRemoveFile = document.getElementById("btn-remove-file");
   const actionsPanel = document.getElementById("actions-panel");
-  const selectOperacao = document.getElementById("select-operacao");
-  const paramsComprimir = document.getElementById("params-comprimir");
-  const paramsGirar = document.getElementById("params-girar");
-  const selectNivel = document.getElementById("select-nivel");
-  const inputGraus = document.getElementById("input-graus");
-  const btnProcessar = document.getElementById("btn-processar");
+  const btnExecutar = document.getElementById("btn-executar-acao");
   const feedbackMessage = document.getElementById("feedback-message");
+  const textResultBox = document.getElementById("text-result-box");
+  const textResultTitle = document.getElementById("text-result-title");
+  const textResultContent = document.getElementById("text-result-content");
+  const btnCloseTextResult = document.getElementById("btn-close-text-result");
 
   // Elementos do Visualizador PDF
   const viewerSection = document.getElementById("viewer-section");
@@ -34,6 +33,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnRotate = document.getElementById("btn-rotate");
   const pdfCanvas = document.getElementById("pdf-canvas");
 
+  // Abas
+  const tabBtns = document.querySelectorAll(".tab-btn");
+  const tabPanes = document.querySelectorAll(".tab-pane");
+  let activeTabId = "tab-paginas";
+
+  // Estado
   let currentFile = null;
   let currentPdfDoc = null;
   let currentPageNum = 1;
@@ -77,6 +82,21 @@ document.addEventListener("DOMContentLoaded", () => {
     feedbackMessage.className = "feedback-message hidden";
   }
 
+  function showTextResult(title, content) {
+    if (!textResultBox || !textResultContent) return;
+    if (textResultTitle) textResultTitle.textContent = title;
+    textResultContent.textContent = content;
+    textResultBox.classList.remove("hidden");
+  }
+
+  function hideTextResult() {
+    if (textResultBox) textResultBox.classList.add("hidden");
+  }
+
+  if (btnCloseTextResult) {
+    btnCloseTextResult.addEventListener("click", hideTextResult);
+  }
+
   function formatBytes(bytes) {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
@@ -85,13 +105,89 @@ document.addEventListener("DOMContentLoaded", () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   }
 
+  // Controle de Abas
+  tabBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      tabBtns.forEach((b) => b.classList.remove("active"));
+      tabPanes.forEach((p) => p.classList.remove("active"));
+
+      btn.classList.add("active");
+      activeTabId = btn.getAttribute("data-tab");
+      const targetPane = document.getElementById(activeTabId);
+      if (targetPane) targetPane.classList.add("active");
+    });
+  });
+
+  // Controles dinâmicos de sub-opções
+  // Páginas
+  const selectSubPaginas = document.getElementById("select-sub-paginas");
+  const boxPaginasGraus = document.getElementById("box-paginas-graus");
+  const boxPaginasLista = document.getElementById("box-paginas-lista");
+  const boxPaginasOrdem = document.getElementById("box-paginas-ordem");
+
+  if (selectSubPaginas) {
+    selectSubPaginas.addEventListener("change", () => {
+      const v = selectSubPaginas.value;
+      boxPaginasGraus?.classList.toggle("hidden", v !== "girar");
+      boxPaginasLista?.classList.toggle("hidden", v === "reordenar");
+      boxPaginasOrdem?.classList.toggle("hidden", v !== "reordenar");
+    });
+  }
+
+  // Anotações
+  const selectSubAnotacoes = document.getElementById("select-sub-anotacoes");
+  const boxAnotMarca = document.getElementById("box-anot-marcadagua");
+  const boxAnotNumerar = document.getElementById("box-anot-numerar");
+  const boxAnotNota = document.getElementById("box-anot-nota");
+  const boxAnotDestacar = document.getElementById("box-anot-destacar");
+
+  if (selectSubAnotacoes) {
+    selectSubAnotacoes.addEventListener("change", () => {
+      const v = selectSubAnotacoes.value;
+      boxAnotMarca?.classList.toggle("hidden", v !== "marca-dagua");
+      boxAnotNumerar?.classList.toggle("hidden", v !== "numerar");
+      boxAnotNota?.classList.toggle("hidden", v !== "nota");
+      boxAnotDestacar?.classList.toggle("hidden", v !== "destacar");
+    });
+  }
+
+  // Formulários
+  const selectSubForm = document.getElementById("select-sub-formularios");
+  const boxFormPreencher = document.getElementById("box-form-preencher");
+  if (selectSubForm) {
+    selectSubForm.addEventListener("change", () => {
+      const v = selectSubForm.value;
+      boxFormPreencher?.classList.toggle("hidden", v !== "preencher");
+    });
+  }
+
+  // Texto
+  const selectSubTexto = document.getElementById("select-sub-texto");
+  const boxTextoAdd = document.getElementById("box-texto-adicionar");
+  const boxTextoMeta = document.getElementById("box-texto-metadados");
+  if (selectSubTexto) {
+    selectSubTexto.addEventListener("change", () => {
+      const v = selectSubTexto.value;
+      boxTextoAdd?.classList.toggle("hidden", v !== "adicionar-texto");
+      boxTextoMeta?.classList.toggle("hidden", v !== "editar-metadados");
+    });
+  }
+
+  // Segurança
+  const selectSubSeg = document.getElementById("select-sub-seguranca");
+  const boxSegComprimir = document.getElementById("box-seg-comprimir");
+  const boxSegSenha = document.getElementById("box-seg-senha");
+  if (selectSubSeg) {
+    selectSubSeg.addEventListener("change", () => {
+      const v = selectSubSeg.value;
+      boxSegComprimir?.classList.toggle("hidden", v !== "comprimir");
+      boxSegSenha?.classList.toggle("hidden", v === "comprimir");
+    });
+  }
+
   // Funções do Visualizador PDF (pdf.js)
   async function loadPdfInViewer(arrayBuffer) {
-    if (!window.pdfjsLib) {
-      console.warn("pdf.js não encontrado.");
-      return;
-    }
-
+    if (!window.pdfjsLib) return;
     try {
       const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
       currentPdfDoc = await loadingTask.promise;
@@ -108,7 +204,7 @@ document.addEventListener("DOMContentLoaded", () => {
       renderPage(currentPageNum);
     } catch (err) {
       console.error("Erro ao carregar visualizador:", err);
-      showFeedback(`Não foi possível exibir o PDF na tela: ${err.message}`, "error");
+      showFeedback(`Não foi possível exibir o PDF: ${err.message}`, "error");
     }
   }
 
@@ -181,6 +277,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     currentFile = file;
     clearFeedback();
+    hideTextResult();
 
     if (fileName) fileName.textContent = file.name;
     if (fileMeta) fileMeta.textContent = `Tamanho: ${formatBytes(file.size)} | Analisando...`;
@@ -212,7 +309,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     } catch (err) {
-      // Ignora erro secundário de inspeção
       if (fileMeta) fileMeta.textContent = `Tamanho: ${formatBytes(file.size)}`;
     }
   }
@@ -225,6 +321,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (actionsPanel) actionsPanel.classList.add("hidden");
     if (viewerSection) viewerSection.classList.add("hidden");
     clearFeedback();
+    hideTextResult();
   }
 
   // Eventos de Drag & Drop
@@ -263,7 +360,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Remoção de arquivo
   if (btnRemoveFile) {
     btnRemoveFile.addEventListener("click", resetFile);
   }
@@ -321,45 +417,172 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Alternância de parâmetros da operação
-  if (selectOperacao) {
-    selectOperacao.addEventListener("change", () => {
-      const op = selectOperacao.value;
-      if (op === "comprimir") {
-        paramsComprimir?.classList.remove("hidden");
-        paramsGirar?.classList.add("hidden");
-      } else if (op === "girar") {
-        paramsComprimir?.classList.add("hidden");
-        paramsGirar?.classList.remove("hidden");
+  // Helper para disparar download e atualizar visualizador com novo PDF
+  async function handlePdfDownloadResponse(response, fallbackName) {
+    let downloadName = fallbackName;
+    const disposition = response.headers.get("Content-Disposition");
+    if (disposition && disposition.includes("filename=")) {
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      if (match && match[1]) {
+        downloadName = match[1];
       }
-    });
+    }
+
+    const blob = await response.blob();
+
+    // Atualiza visualização na tela
+    const processedBuffer = await blob.arrayBuffer();
+    await loadPdfInViewer(processedBuffer);
+
+    // Dispara download
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = downloadName;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    a.remove();
+
+    showFeedback(`Sucesso! Operação concluída. Arquivo '${downloadName}' baixado.`, "success");
   }
 
-  // Processamento e download do PDF
-  if (btnProcessar) {
-    btnProcessar.addEventListener("click", async () => {
-      if (!currentFile) {
-        showFeedback("Selecione um arquivo PDF antes de processar.", "error");
+  // Execução da Ação Selecionada
+  if (btnExecutar) {
+    btnExecutar.addEventListener("click", async () => {
+      // Caso especial: Juntar PDFs
+      if (activeTabId === "tab-juntar") {
+        const inputMulti = document.getElementById("input-multiplos-pdfs");
+        const files = inputMulti?.files;
+        if (!files || files.length < 2) {
+          showFeedback("Selecione pelo menos 2 arquivos PDF para juntar.", "error");
+          return;
+        }
+
+        btnExecutar.disabled = true;
+        btnExecutar.textContent = "Processando...";
+        showFeedback("Juntando arquivos PDF...", "info");
+
+        const formData = new FormData();
+        for (let i = 0; i < files.length; i++) {
+          formData.append("arquivos", files[i]);
+        }
+
+        try {
+          const res = await fetch("/api/paginas/juntar", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `Erro HTTP ${res.status}`);
+          }
+
+          await handlePdfDownloadResponse(res, "documento_juntado.pdf");
+        } catch (e) {
+          showFeedback(`Falha ao juntar PDFs: ${e.message}`, "error");
+        } finally {
+          btnExecutar.disabled = false;
+          btnExecutar.textContent = "Executar Operação";
+        }
         return;
       }
 
-      btnProcessar.disabled = true;
-      btnProcessar.textContent = "Processando...";
+      // Demais abas necessitam de currentFile
+      if (!currentFile) {
+        showFeedback("Selecione um arquivo PDF antes de executar.", "error");
+        return;
+      }
+
+      btnExecutar.disabled = true;
+      btnExecutar.textContent = "Processando...";
       showFeedback("Processando arquivo PDF com PerfectDF...", "info");
 
-      const operacao = selectOperacao?.value || "comprimir";
       const formData = new FormData();
       formData.append("arquivo", currentFile);
-      formData.append("operacao", operacao);
 
-      if (operacao === "comprimir" && selectNivel) {
-        formData.append("nivel", selectNivel.value);
-      } else if (operacao === "girar" && inputGraus) {
-        formData.append("graus", inputGraus.value);
+      let url = "";
+      let isJsonResult = false;
+
+      // Monta os parâmetros conforme a aba ativa
+      if (activeTabId === "tab-paginas") {
+        const acao = selectSubPaginas?.value;
+        if (acao === "girar") {
+          url = "/api/paginas/girar";
+          formData.append("graus", document.getElementById("input-paginas-graus")?.value || "90");
+          formData.append("paginas", document.getElementById("input-paginas-lista")?.value || "");
+        } else if (acao === "extrair") {
+          url = "/api/paginas/extrair";
+          formData.append("paginas", document.getElementById("input-paginas-lista")?.value || "");
+        } else if (acao === "excluir") {
+          url = "/api/paginas/excluir";
+          formData.append("paginas", document.getElementById("input-paginas-lista")?.value || "");
+        } else if (acao === "reordenar") {
+          url = "/api/paginas/reordenar";
+          formData.append("ordem", document.getElementById("input-paginas-ordem")?.value || "");
+        }
+      } else if (activeTabId === "tab-anotacoes") {
+        const acao = selectSubAnotacoes?.value;
+        if (acao === "marca-dagua") {
+          url = "/api/anotacoes/marca-dagua";
+          formData.append("texto", document.getElementById("input-marca-texto")?.value || "");
+          formData.append("opacidade", document.getElementById("input-marca-opacidade")?.value || "0.3");
+        } else if (acao === "numerar") {
+          url = "/api/anotacoes/numerar";
+          formData.append("formato", document.getElementById("input-num-formato")?.value || "");
+          formData.append("posicao", document.getElementById("select-num-posicao")?.value || "");
+        } else if (acao === "nota") {
+          url = "/api/anotacoes/nota";
+          formData.append("texto", document.getElementById("input-nota-texto")?.value || "");
+          formData.append("pagina", document.getElementById("input-nota-pagina")?.value || "1");
+        } else if (acao === "destacar") {
+          url = "/api/anotacoes/destacar";
+          formData.append("termo", document.getElementById("input-destaque-termo")?.value || "");
+          formData.append("tipo", document.getElementById("select-destaque-tipo")?.value || "destaque");
+        }
+      } else if (activeTabId === "tab-formularios") {
+        const acao = selectSubForm?.value;
+        if (acao === "listar") {
+          url = "/api/formularios/listar";
+          isJsonResult = true;
+        } else if (acao === "preencher") {
+          url = "/api/formularios/preencher";
+          formData.append("dados_json", document.getElementById("input-form-json")?.value || "{}");
+        } else if (acao === "achatar") {
+          url = "/api/formularios/achatar";
+        }
+      } else if (activeTabId === "tab-texto") {
+        const acao = selectSubTexto?.value;
+        if (acao === "extrair-texto") {
+          url = "/api/texto/extrair";
+          isJsonResult = true;
+        } else if (acao === "adicionar-texto") {
+          url = "/api/texto/adicionar";
+          formData.append("texto", document.getElementById("input-add-texto-conteudo")?.value || "");
+          formData.append("pagina", document.getElementById("input-add-texto-pagina")?.value || "1");
+          formData.append("cor", document.getElementById("select-add-texto-cor")?.value || "preto");
+        } else if (acao === "editar-metadados") {
+          url = "/api/metadados/editar";
+          formData.append("titulo", document.getElementById("input-meta-titulo")?.value || "");
+          formData.append("autor", document.getElementById("input-meta-autor")?.value || "");
+        }
+      } else if (activeTabId === "tab-seguranca") {
+        const acao = selectSubSeg?.value;
+        if (acao === "comprimir") {
+          url = "/api/compressao/comprimir";
+          formData.append("nivel", document.getElementById("select-seg-nivel")?.value || "medio");
+        } else if (acao === "proteger") {
+          url = "/api/seguranca/proteger";
+          formData.append("senha_usuario", document.getElementById("input-seg-senha")?.value || "");
+        } else if (acao === "remover-senha") {
+          url = "/api/seguranca/remover-senha";
+          formData.append("senha", document.getElementById("input-seg-senha")?.value || "");
+        }
       }
 
       try {
-        const response = await fetch("/api/processar", {
+        const response = await fetch(url, {
           method: "POST",
           body: formData,
         });
@@ -369,37 +592,22 @@ document.addEventListener("DOMContentLoaded", () => {
           throw new Error(errData.detail || `Erro HTTP ${response.status}`);
         }
 
-        let downloadName = `processado_${currentFile.name}`;
-        const disposition = response.headers.get("Content-Disposition");
-        if (disposition && disposition.includes("filename=")) {
-          const match = disposition.match(/filename="?([^"]+)"?/);
-          if (match && match[1]) {
-            downloadName = match[1];
+        if (isJsonResult) {
+          const jsonRes = await response.json();
+          if (jsonRes.texto !== undefined) {
+            showTextResult("Texto Extraído do PDF", jsonRes.texto || "(Nenhum texto encontrado)");
+          } else if (jsonRes.campos !== undefined) {
+            showTextResult(`Campos Encontrados (${jsonRes.total})`, JSON.stringify(jsonRes.campos, null, 2));
           }
+          showFeedback("Consulta realizada com sucesso!", "success");
+        } else {
+          await handlePdfDownloadResponse(response, `processado_${currentFile.name}`);
         }
-
-        const blob = await response.blob();
-
-        // Atualiza a visualização na tela com o PDF processado
-        const processedBuffer = await blob.arrayBuffer();
-        await loadPdfInViewer(processedBuffer);
-
-        // Dispara o download
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = downloadUrl;
-        a.download = downloadName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(downloadUrl);
-        a.remove();
-
-        showFeedback(`Sucesso! O arquivo '${downloadName}' foi processado e baixado.`, "success");
       } catch (err) {
-        showFeedback(`Falha no processamento: ${err.message}`, "error");
+        showFeedback(`Erro ao processar: ${err.message}`, "error");
       } finally {
-        btnProcessar.disabled = false;
-        btnProcessar.textContent = "Processar e Baixar PDF";
+        btnExecutar.disabled = false;
+        btnExecutar.textContent = "Executar Operação";
       }
     });
   }

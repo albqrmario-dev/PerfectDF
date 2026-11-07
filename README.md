@@ -415,7 +415,15 @@ python -m perfectdf --help
 
 ## 🌐 Interface Web
 
-O **PerfectDF** conta com uma interface web para visualização e edição diretamente no navegador.
+O **PerfectDF** conta com uma interface web completa construída com **FastAPI**, **HTML/CSS/JS puro** (sem frameworks nem etapa de build) e o visualizador **pdf.js (Mozilla)** embutido localmente.
+
+### Funcionalidades Disponíveis no Navegador:
+- **Visualizador Integrado:** Renderização em alta definição com paginação, zoom e rotação de tela em tempo real.
+- **Manipulação de Páginas:** Girar, extrair, excluir, reordenar páginas e mesclar (juntar) múltiplos PDFs.
+- **Anotações e Marcações:** Adicionar marcas d'água, numeração automática, notas (post-its) e destacar/sublinhar/riscar termos de texto.
+- **Formulários:** Listar widgets de formulário, preencher campos via JSON e achatar (flatten) formulários.
+- **Texto & Metadados:** Extrair texto legível, inserir novos textos na página e editar metadados do documento.
+- **Otimização & Segurança:** Comprimir tamanho de arquivos, proteger com criptografia AES-256 e remover senhas.
 
 ### Como Iniciar o Servidor Web
 

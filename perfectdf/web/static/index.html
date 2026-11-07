@@ -18,74 +18,7 @@
   </header>
 
   <main class="app-main">
-    <section class="upload-section">
-      <div id="drop-zone" class="drop-zone">
-        <div class="drop-zone-icon">📥</div>
-        <h3>Arraste e solte seu arquivo PDF aqui</h3>
-        <p>ou clique no botão abaixo para selecionar</p>
-        <label for="file-input" class="btn btn-primary">Selecionar PDF</label>
-        <input type="file" id="file-input" accept="application/pdf,.pdf" style="display: none;">
-      </div>
-
-      <!-- Card com informações do arquivo carregado -->
-      <div id="file-info-card" class="file-info-card hidden">
-        <div class="file-details">
-          <span class="file-icon">📑</span>
-          <div>
-            <h4 id="file-name">documento.pdf</h4>
-            <p id="file-meta">Tamanho: 0 KB | Páginas: 0</p>
-          </div>
-        </div>
-        <button id="btn-remove-file" class="btn btn-text" title="Remover arquivo">&times;</button>
-      </div>
-
-      <!-- Painel de Operações -->
-      <div id="actions-panel" class="actions-panel hidden">
-        <h3>Ações de Processamento</h3>
-        <div class="form-row">
-          <label for="select-operacao">Operação:</label>
-          <select id="select-operacao" class="input-control">
-            <option value="comprimir">Comprimir PDF</option>
-            <option value="girar">Girar Páginas (90°)</option>
-          </select>
-        </div>
-
-        <div id="params-comprimir" class="form-row">
-          <label for="select-nivel">Nível de Compressão:</label>
-          <select id="select-nivel" class="input-control">
-            <option value="baixo">Baixo (Mais rápido)</option>
-            <option value="medio" selected>Médio (Recomendado)</option>
-            <option value="alto">Alto (Maior redução)</option>
-          </select>
-        </div>
-
-        <div id="params-girar" class="form-row hidden">
-          <label for="input-graus">Graus:</label>
-          <select id="input-graus" class="input-control">
-            <option value="90">90° no sentido horário</option>
-            <option value="180">180°</option>
-            <option value="270">270° (90° anti-horário)</option>
-          </select>
-        </div>
-
-        <div class="action-buttons">
-          <button id="btn-processar" class="btn btn-success">Processar e Baixar PDF</button>
-        </div>
-      </div>
-
-      <!-- Feedback de status -->
-      <div id="feedback-message" class="feedback-message hidden"></div>
-    </section>
-  </main>
-
-  <footer class="app-footer">
-    <p>PerfectDF — Licença AGPL-3.0 — Construído com Python, FastAPI e PyMuPDF</p>
-  </footer>
-
-  <script src="/static/app.js"></script>
-</body>
-</html>
-    <!-- Seção de Upload e Configurações -->
+    <!-- Seção de Upload Principal -->
     <section class="upload-section">
       <div id="drop-zone" class="drop-zone">
         <div class="drop-zone-icon">📥</div>
@@ -107,42 +40,231 @@
         <button id="btn-remove-file" class="btn btn-text" title="Remover arquivo">&times;</button>
       </div>
 
-      <!-- Painel de Operações Rápidas -->
+      <!-- Painel de Funcionalidades Completo -->
       <div id="actions-panel" class="actions-panel hidden">
-        <h3>Ações de Processamento</h3>
-        <div class="form-row">
-          <label for="select-operacao">Operação:</label>
-          <select id="select-operacao" class="input-control">
-            <option value="comprimir">Comprimir PDF</option>
-            <option value="girar">Girar Páginas (90°)</option>
-          </select>
+        <div class="tabs-header">
+          <button class="tab-btn active" data-tab="tab-paginas">Páginas</button>
+          <button class="tab-btn" data-tab="tab-anotacoes">Anotações</button>
+          <button class="tab-btn" data-tab="tab-formularios">Formulários</button>
+          <button class="tab-btn" data-tab="tab-texto">Texto & Metadados</button>
+          <button class="tab-btn" data-tab="tab-seguranca">Otimização & Segurança</button>
+          <button class="tab-btn" data-tab="tab-juntar">Juntar PDFs</button>
         </div>
 
-        <div id="params-comprimir" class="form-row">
-          <label for="select-nivel">Nível de Compressão:</label>
-          <select id="select-nivel" class="input-control">
-            <option value="baixo">Baixo (Mais rápido)</option>
-            <option value="medio" selected>Médio (Recomendado)</option>
-            <option value="alto">Alto (Maior redução)</option>
-          </select>
+        <!-- Aba Páginas -->
+        <div id="tab-paginas" class="tab-pane active">
+          <div class="form-row">
+            <label for="select-sub-paginas">Ação de Página:</label>
+            <select id="select-sub-paginas" class="input-control">
+              <option value="girar">Girar Páginas</option>
+              <option value="extrair">Extrair Páginas</option>
+              <option value="excluir">Excluir Páginas</option>
+              <option value="reordenar">Reordenar Páginas</option>
+            </select>
+          </div>
+
+          <div id="box-paginas-graus" class="form-row">
+            <label for="input-paginas-graus">Ângulo de Giro:</label>
+            <select id="input-paginas-graus" class="input-control">
+              <option value="90">90° no sentido horário</option>
+              <option value="180">180°</option>
+              <option value="270">270° (90° anti-horário)</option>
+            </select>
+          </div>
+
+          <div id="box-paginas-lista" class="form-row">
+            <label for="input-paginas-lista">Páginas (ex: 1, 3-5 ou vazio para todas):</label>
+            <input type="text" id="input-paginas-lista" class="input-control" placeholder="1-3, 5">
+          </div>
+
+          <div id="box-paginas-ordem" class="form-row hidden">
+            <label for="input-paginas-ordem">Nova Ordem (ex: 3, 1-2):</label>
+            <input type="text" id="input-paginas-ordem" class="input-control" placeholder="3, 1, 2">
+          </div>
         </div>
 
-        <div id="params-girar" class="form-row hidden">
-          <label for="input-graus">Graus:</label>
-          <select id="input-graus" class="input-control">
-            <option value="90">90° no sentido horário</option>
-            <option value="180">180°</option>
-            <option value="270">270° (90° anti-horário)</option>
-          </select>
+        <!-- Aba Anotações -->
+        <div id="tab-anotacoes" class="tab-pane">
+          <div class="form-row">
+            <label for="select-sub-anotacoes">Tipo de Anotação:</label>
+            <select id="select-sub-anotacoes" class="input-control">
+              <option value="marca-dagua">Marca d'Água</option>
+              <option value="numerar">Numerar Páginas</option>
+              <option value="nota">Adicionar Nota (Post-it)</option>
+              <option value="destacar">Destacar / Sublinhar Texto</option>
+            </select>
+          </div>
+
+          <!-- Campos Marca d'Água -->
+          <div id="box-anot-marcadagua" class="sub-form-group">
+            <div class="form-row">
+              <label for="input-marca-texto">Texto da Marca d'Água:</label>
+              <input type="text" id="input-marca-texto" class="input-control" value="CONFIDENCIAL">
+            </div>
+            <div class="form-row">
+              <label for="input-marca-opacidade">Opacidade (0.1 a 1.0):</label>
+              <input type="number" id="input-marca-opacidade" class="input-control" step="0.05" min="0.1" max="1.0" value="0.3">
+            </div>
+          </div>
+
+          <!-- Campos Numeração -->
+          <div id="box-anot-numerar" class="sub-form-group hidden">
+            <div class="form-row">
+              <label for="input-num-formato">Formato (use {n} e {total}):</label>
+              <input type="text" id="input-num-formato" class="input-control" value="Página {n} de {total}">
+            </div>
+            <div class="form-row">
+              <label for="select-num-posicao">Posição:</label>
+              <select id="select-num-posicao" class="input-control">
+                <option value="rodape-centro">Rodapé Centro</option>
+                <option value="rodape-direita">Rodapé Direita</option>
+                <option value="rodape-esquerda">Rodapé Esquerda</option>
+                <option value="topo-centro">Topo Centro</option>
+                <option value="topo-direita">Topo Direita</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Campos Nota -->
+          <div id="box-anot-nota" class="sub-form-group hidden">
+            <div class="form-row">
+              <label for="input-nota-texto">Conteúdo da Nota:</label>
+              <input type="text" id="input-nota-texto" class="input-control" placeholder="Observação importante...">
+            </div>
+            <div class="form-row">
+              <label for="input-nota-pagina">Página:</label>
+              <input type="number" id="input-nota-pagina" class="input-control" min="1" value="1">
+            </div>
+          </div>
+
+          <!-- Campos Destacar -->
+          <div id="box-anot-destacar" class="sub-form-group hidden">
+            <div class="form-row">
+              <label for="input-destaque-termo">Termo para Localizar e Realçar:</label>
+              <input type="text" id="input-destaque-termo" class="input-control" placeholder="Palavra ou termo...">
+            </div>
+            <div class="form-row">
+              <label for="select-destaque-tipo">Estilo:</label>
+              <select id="select-destaque-tipo" class="input-control">
+                <option value="destaque">Destaque (Realce Amarelo)</option>
+                <option value="sublinhado">Sublinhado</option>
+                <option value="riscado">Riscado / Tachado</option>
+              </select>
+            </div>
+          </div>
         </div>
 
+        <!-- Aba Formulários -->
+        <div id="tab-formularios" class="tab-pane">
+          <div class="form-row">
+            <label for="select-sub-formularios">Ação do Formulário:</label>
+            <select id="select-sub-formularios" class="input-control">
+              <option value="listar">Listar Campos Existentes</option>
+              <option value="preencher">Preencher Formulário</option>
+              <option value="achatar">Achatar Formulário (Flatten)</option>
+            </select>
+          </div>
+
+          <div id="box-form-preencher" class="form-row hidden">
+            <label for="input-form-json">Valores dos Campos (JSON, ex: {"nome": "Maria", "aceito": true}):</label>
+            <textarea id="input-form-json" class="input-control" rows="3" placeholder='{"campo1": "valor"}'></textarea>
+          </div>
+        </div>
+
+        <!-- Aba Texto & Metadados -->
+        <div id="tab-texto" class="tab-pane">
+          <div class="form-row">
+            <label for="select-sub-texto">Ação:</label>
+            <select id="select-sub-texto" class="input-control">
+              <option value="extrair-texto">Extrair Texto</option>
+              <option value="adicionar-texto">Adicionar Texto na Página</option>
+              <option value="editar-metadados">Editar Metadados</option>
+            </select>
+          </div>
+
+          <div id="box-texto-adicionar" class="sub-form-group hidden">
+            <div class="form-row">
+              <label for="input-add-texto-conteudo">Texto a inserir:</label>
+              <input type="text" id="input-add-texto-conteudo" class="input-control" placeholder="Texto aqui...">
+            </div>
+            <div class="form-row">
+              <label for="input-add-texto-pagina">Página:</label>
+              <input type="number" id="input-add-texto-pagina" class="input-control" min="1" value="1">
+            </div>
+            <div class="form-row">
+              <label for="select-add-texto-cor">Cor:</label>
+              <select id="select-add-texto-cor" class="input-control">
+                <option value="preto">Preto</option>
+                <option value="azul">Azul</option>
+                <option value="vermelho">Vermelho</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="box-texto-metadados" class="sub-form-group hidden">
+            <div class="form-row">
+              <label for="input-meta-titulo">Título:</label>
+              <input type="text" id="input-meta-titulo" class="input-control">
+            </div>
+            <div class="form-row">
+              <label for="input-meta-autor">Autor:</label>
+              <input type="text" id="input-meta-autor" class="input-control">
+            </div>
+          </div>
+        </div>
+
+        <!-- Aba Otimização & Segurança -->
+        <div id="tab-seguranca" class="tab-pane">
+          <div class="form-row">
+            <label for="select-sub-seguranca">Ação:</label>
+            <select id="select-sub-seguranca" class="input-control">
+              <option value="comprimir">Comprimir PDF</option>
+              <option value="proteger">Proteger com Senha (AES-256)</option>
+              <option value="remover-senha">Remover Senha</option>
+            </select>
+          </div>
+
+          <div id="box-seg-comprimir" class="form-row">
+            <label for="select-seg-nivel">Nível de Compressão:</label>
+            <select id="select-seg-nivel" class="input-control">
+              <option value="baixo">Baixo</option>
+              <option value="medio" selected>Médio (Recomendado)</option>
+              <option value="alto">Alto</option>
+            </select>
+          </div>
+
+          <div id="box-seg-senha" class="form-row hidden">
+            <label for="input-seg-senha">Senha:</label>
+            <input type="password" id="input-seg-senha" class="input-control" placeholder="Digite a senha...">
+          </div>
+        </div>
+
+        <!-- Aba Juntar PDFs -->
+        <div id="tab-juntar" class="tab-pane">
+          <p class="tab-info">Selecione múltiplos arquivos PDF para combiná-los em um único documento:</p>
+          <div class="form-row">
+            <input type="file" id="input-multiplos-pdfs" accept="application/pdf,.pdf" multiple class="input-control">
+          </div>
+          <div id="lista-arquivos-juntar" class="files-preview-list"></div>
+        </div>
+
+        <!-- Botão Principal de Ação -->
         <div class="action-buttons">
-          <button id="btn-processar" class="btn btn-success">Processar e Baixar PDF</button>
+          <button id="btn-executar-acao" class="btn btn-success">Executar Operação</button>
         </div>
       </div>
 
       <!-- Feedback de status -->
       <div id="feedback-message" class="feedback-message hidden"></div>
+
+      <!-- Modal/Caixa de Resultado Textual (ex: Extração de texto / Lista de campos) -->
+      <div id="text-result-box" class="text-result-box hidden">
+        <div class="text-result-header">
+          <h4 id="text-result-title">Resultado</h4>
+          <button id="btn-close-text-result" class="btn btn-text">&times;</button>
+        </div>
+        <pre id="text-result-content"></pre>
+      </div>
     </section>
 
     <!-- Seção do Visualizador PDF (pdf.js) -->
@@ -166,5 +288,16 @@
 
       <div id="canvas-container" class="canvas-container">
         <canvas id="pdf-canvas"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>PerfectDF — Licença AGPL-3.0 — Construído com Python, FastAPI e PyMuPDF</p>
+  </footer>
+
   <!-- pdf.js local em static/vendor sem CDN -->
   <script src="/static/vendor/pdfjs/pdf.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
