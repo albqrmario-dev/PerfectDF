@@ -307,6 +307,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (fileMeta) {
           fileMeta.textContent = `Tamanho: ${formatBytes(data.tamanho)} | Páginas: ${data.total_paginas}`;
         }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showFeedback(err.erro || err.detail || "Erro ao ler metadados do PDF.", "error");
       }
     } catch (err) {
       if (fileMeta) fileMeta.textContent = `Tamanho: ${formatBytes(file.size)}`;
@@ -476,7 +479,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || `Erro HTTP ${res.status}`);
+            throw new Error(err.erro || err.detail || `Erro HTTP ${res.status}`);
           }
 
           await handlePdfDownloadResponse(res, "documento_juntado.pdf");
@@ -589,7 +592,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.detail || `Erro HTTP ${response.status}`);
+          throw new Error(errData.erro || errData.detail || `Erro HTTP ${response.status}`);
         }
 
         if (isJsonResult) {

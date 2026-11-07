@@ -1,13 +1,16 @@
 """Aplicação backend FastAPI para a interface web do PerfectDF."""
 
 import json
+import logging
 from pathlib import Path
 import tempfile
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import Request
 
 from perfectdf.anotacoes import (
     adicionar_marca_dagua,
@@ -33,6 +36,11 @@ from perfectdf.paginas import (
 from perfectdf.seguranca import proteger_pdf, remover_senha
 from perfectdf.texto import adicionar_texto, extrair_texto
 
+# Limite máximo de upload: 50 MB
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+
+logger = logging.getLogger("perfectdf.web")
+
 # Diretório base dos arquivos estáticos
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -46,6 +54,48 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+# =========================================================================
+# Exception Handlers Globais (JSON seguro sem stack trace e sem vazamento)
+# =========================================================================
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    """Retorna respostas HTTP padronizadas com a chave 'erro'."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"erro": str(exc.detail)},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Captura erros de validação da requisição (422) retornando mensagem clara em português."""
+    return JSONResponse(
+        status_code=422,
+        content={"erro": "Dados da requisição inválidos ou incompletos."},
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """Captura exceções inesperadas registrando apenas o tipo da exceção e a rota no log."""
+    logger.error("Erro interno %s na rota %s", type(exc).__name__, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"erro": "Ocorreu um erro interno ao processar a operação solicitada."},
+    )
+
+
+# =========================================================================
+# Helpers de Validação e Gravação Segura
+# =========================================================================
+
+
 def _validar_extensao_pdf(nome_arquivo: str | None) -> None:
     """Valida se o arquivo informado possui extensão .pdf."""
     if not nome_arquivo or not nome_arquivo.lower().endswith(".pdf"):
@@ -55,13 +105,46 @@ def _validar_extensao_pdf(nome_arquivo: str | None) -> None:
         )
 
 
-async def _salvar_upload(arquivo: UploadFile, destino: Path) -> int:
-    """Salva um UploadFile em disco em blocos seguros."""
+async def _salvar_e_validar_upload_pdf(arquivo: UploadFile, destino: Path) -> int:
+    """Salva o UploadFile em disco com limite de 50MB e valida a integridade do PDF.
+
+    Garante fechamento imediato com doc.close() em bloco try/finally.
+    """
+    _validar_extensao_pdf(arquivo.filename)
+
     tamanho = 0
+    cabecalho = b""
     with open(destino, "wb") as f:
         while chunk := await arquivo.read(1024 * 1024):
-            f.write(chunk)
             tamanho += len(chunk)
+            if tamanho > MAX_UPLOAD_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail="O arquivo excede o limite máximo permitido de 50 MB.",
+                )
+            if len(cabecalho) < 5:
+                cabecalho += chunk[: 5 - len(cabecalho)]
+            f.write(chunk)
+
+    if not cabecalho.startswith(b"%PDF-"):
+        raise HTTPException(
+            status_code=400,
+            detail="O arquivo enviado não é um documento PDF válido.",
+        )
+
+    try:
+        doc = abrir_pdf(str(destino))
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="O arquivo enviado não é um documento PDF válido.",
+        )
+    else:
+        try:
+            _ = len(doc)
+        finally:
+            doc.close()
+
     return tamanho
 
 
@@ -80,21 +163,21 @@ def index() -> FileResponse:
 @app.post("/api/inspecionar")
 async def inspecionar_pdf(arquivo: UploadFile = File(...)) -> dict[str, Any]:
     """Inspeciona um arquivo PDF enviado e retorna metadados e contagem de páginas."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         temp_path = Path(tmpdir) / "upload.pdf"
-        tamanho = await _salvar_upload(arquivo, temp_path)
+        tamanho = await _salvar_e_validar_upload_pdf(arquivo, temp_path)
 
         try:
             doc = abrir_pdf(str(temp_path))
-            total_paginas = len(doc)
-            doc.close()
+            try:
+                total_paginas = len(doc)
+            finally:
+                doc.close()
             metadados = ler_metadados(str(temp_path))
-        except Exception as e:
+        except Exception:
             raise HTTPException(
                 status_code=400,
-                detail=f"Não foi possível ler o arquivo PDF: {e}",
+                detail="Não foi possível ler as informações do documento PDF.",
             )
 
     return {
@@ -117,21 +200,25 @@ async def rota_girar_paginas(
     paginas: str = Form(""),
 ) -> Response:
     """Gira páginas selecionadas do PDF."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
         doc = abrir_pdf(str(inp))
-        total = len(doc)
-        doc.close()
+        try:
+            total = len(doc)
+        finally:
+            doc.close()
 
         lista_paginas = (
             parsear_paginas(paginas) if paginas.strip() else list(range(1, total + 1))
         )
-        girar_paginas(str(inp), paginas=lista_paginas, graus=graus, saida=str(out))
+        try:
+            girar_paginas(str(inp), paginas=lista_paginas, graus=graus, saida=str(out))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -149,12 +236,10 @@ async def rota_extrair_paginas(
     paginas: str = Form(...),
 ) -> Response:
     """Extrai páginas selecionadas para um novo PDF."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
         lista_paginas = parsear_paginas(paginas)
         if not lista_paginas:
@@ -162,7 +247,11 @@ async def rota_extrair_paginas(
                 status_code=400, detail="Nenhuma página válida especificada."
             )
 
-        extrair_paginas(str(inp), paginas=lista_paginas, saida=str(out))
+        try:
+            extrair_paginas(str(inp), paginas=lista_paginas, saida=str(out))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -180,12 +269,10 @@ async def rota_excluir_paginas(
     paginas: str = Form(...),
 ) -> Response:
     """Exclui páginas selecionadas de um PDF."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
         lista_paginas = parsear_paginas(paginas)
         if not lista_paginas:
@@ -194,7 +281,11 @@ async def rota_excluir_paginas(
                 detail="Nenhuma página especificada para exclusão.",
             )
 
-        excluir_paginas(str(inp), paginas=lista_paginas, saida=str(out))
+        try:
+            excluir_paginas(str(inp), paginas=lista_paginas, saida=str(out))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -212,14 +303,16 @@ async def rota_reordenar_paginas(
     ordem: str = Form(...),
 ) -> Response:
     """Reordena páginas de um PDF."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
-        reordenar_paginas(str(inp), ordem=ordem, saida=str(out))
+        try:
+            reordenar_paginas(str(inp), ordem=ordem, saida=str(out))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -245,13 +338,16 @@ async def rota_juntar_pdfs(
     with tempfile.TemporaryDirectory() as tmpdir:
         caminhos: list[str] = []
         for i, arq in enumerate(arquivos):
-            _validar_extensao_pdf(arq.filename)
             p = Path(tmpdir) / f"doc_{i}.pdf"
-            await _salvar_upload(arq, p)
+            await _salvar_e_validar_upload_pdf(arq, p)
             caminhos.append(str(p))
 
         out = Path(tmpdir) / "unificado.pdf"
-        juntar_pdfs(caminhos=caminhos, saida=str(out))
+        try:
+            juntar_pdfs(caminhos=caminhos, saida=str(out))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -278,23 +374,25 @@ async def rota_marca_dagua(
     tamanho_fonte: float = Form(48.0),
 ) -> Response:
     """Aplica marca d'água de texto nas páginas do PDF."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
         pags = parsear_paginas(paginas) if paginas.strip() else None
-        adicionar_marca_dagua(
-            caminho=str(inp),
-            saida=str(out),
-            texto=texto,
-            paginas=pags,
-            opacidade=opacidade,
-            angulo=angulo,
-            tamanho_fonte=tamanho_fonte,
-        )
+        try:
+            adicionar_marca_dagua(
+                caminho=str(inp),
+                saida=str(out),
+                texto=texto,
+                paginas=pags,
+                opacidade=opacidade,
+                angulo=angulo,
+                tamanho_fonte=tamanho_fonte,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -316,23 +414,25 @@ async def rota_numerar_paginas(
     tamanho_fonte: float = Form(10.0),
 ) -> Response:
     """Adiciona numeração às páginas de um PDF."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
         pags = parsear_paginas(paginas) if paginas.strip() else None
-        numerar_paginas(
-            caminho=str(inp),
-            saida=str(out),
-            formato=formato,
-            posicao=posicao,
-            inicio=inicio,
-            paginas=pags,
-            tamanho_fonte=tamanho_fonte,
-        )
+        try:
+            numerar_paginas(
+                caminho=str(inp),
+                saida=str(out),
+                formato=formato,
+                posicao=posicao,
+                inicio=inicio,
+                paginas=pags,
+                tamanho_fonte=tamanho_fonte,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -353,20 +453,22 @@ async def rota_adicionar_nota(
     pos_y: float = Form(50.0),
 ) -> Response:
     """Adiciona uma nota (post-it) a uma página específica."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
-        adicionar_nota(
-            caminho=str(inp),
-            saida=str(out),
-            pagina=pagina,
-            texto=texto,
-            posicao=(pos_x, pos_y),
-        )
+        try:
+            adicionar_nota(
+                caminho=str(inp),
+                saida=str(out),
+                pagina=pagina,
+                texto=texto,
+                posicao=(pos_x, pos_y),
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -388,23 +490,25 @@ async def rota_destacar_texto(
     ignorar_maiusculas: bool = Form(True),
 ) -> Response:
     """Destaca termos de texto no PDF."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
         pags = parsear_paginas(paginas) if paginas.strip() else None
-        destacar_texto(
-            caminho=str(inp),
-            saida=str(out),
-            termo=termo,
-            paginas=pags,
-            tipo=tipo,
-            cor=cor,
-            ignorar_maiusculas=ignorar_maiusculas,
-        )
+        try:
+            destacar_texto(
+                caminho=str(inp),
+                saida=str(out),
+                termo=termo,
+                paginas=pags,
+                tipo=tipo,
+                cor=cor,
+                ignorar_maiusculas=ignorar_maiusculas,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -426,12 +530,13 @@ async def rota_listar_campos(
     arquivo: UploadFile = File(...),
 ) -> dict[str, Any]:
     """Lista todos os campos de formulário presentes no PDF."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
-        await _salvar_upload(arquivo, inp)
-        campos = listar_campos(str(inp))
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
+        try:
+            campos = listar_campos(str(inp))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     return {"total": len(campos), "campos": campos}
 
@@ -442,24 +547,26 @@ async def rota_preencher_formulario(
     dados_json: str = Form(...),
 ) -> Response:
     """Preenche campos de formulário a partir de um JSON."""
-    _validar_extensao_pdf(arquivo.filename)
-
     try:
         valores = json.loads(dados_json)
         if not isinstance(valores, dict):
-            raise ValueError("O formato de dados_json deve ser um dicionário.")
-    except Exception as e:
+            raise ValueError()
+    except Exception:
         raise HTTPException(
             status_code=400,
-            detail=f"JSON de dados inválido: {e}",
+            detail="Formato de dados JSON inválido. Certifique-se de enviar um objeto chave-valor válido.",
         )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
-        preencher_formulario(str(inp), valores=valores, saida=str(out))
+        try:
+            preencher_formulario(str(inp), valores=valores, saida=str(out))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -476,14 +583,16 @@ async def rota_achatar_formulario(
     arquivo: UploadFile = File(...),
 ) -> Response:
     """Achata campos de formulário tornando o conteúdo estático."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
-        achatar_formulario(str(inp), saida=str(out))
+        try:
+            achatar_formulario(str(inp), saida=str(out))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -506,14 +615,15 @@ async def rota_extrair_texto(
     paginas: str = Form(""),
 ) -> dict[str, str]:
     """Extrai texto legível das páginas do PDF."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
         pags = parsear_paginas(paginas) if paginas.strip() else None
-        texto = extrair_texto(str(inp), paginas=pags)
+        try:
+            texto = extrair_texto(str(inp), paginas=pags)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     return {"texto": texto}
 
@@ -530,23 +640,25 @@ async def rota_adicionar_texto(
     cor: str = Form("preto"),
 ) -> Response:
     """Adiciona texto em posição específica de uma página."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
-        adicionar_texto(
-            pdf=str(inp),
-            pagina=pagina,
-            texto=texto,
-            posicao=(pos_x, pos_y),
-            fonte=fonte,
-            tamanho=tamanho,
-            cor=cor,
-            saida=str(out),
-        )
+        try:
+            adicionar_texto(
+                pdf=str(inp),
+                pagina=pagina,
+                texto=texto,
+                posicao=(pos_x, pos_y),
+                fonte=fonte,
+                tamanho=tamanho,
+                cor=cor,
+                saida=str(out),
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -567,8 +679,6 @@ async def rota_editar_metadados(
     palavras_chave: str = Form(""),
 ) -> Response:
     """Atualiza metadados do documento PDF."""
-    _validar_extensao_pdf(arquivo.filename)
-
     novos_meta: dict[str, str] = {}
     if titulo:
         novos_meta["title"] = titulo
@@ -582,9 +692,13 @@ async def rota_editar_metadados(
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
-        editar_metadados(str(inp), novos=novos_meta, saida=str(out))
+        try:
+            editar_metadados(str(inp), novos=novos_meta, saida=str(out))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -607,14 +721,16 @@ async def rota_comprimir_pdf(
     nivel: str = Form("medio"),
 ) -> Response:
     """Comprime o documento PDF reduzindo seu tamanho."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
-        comprimir_pdf(str(inp), saida=str(out), nivel=nivel)
+        try:
+            comprimir_pdf(str(inp), saida=str(out), nivel=nivel)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -633,20 +749,22 @@ async def rota_proteger_pdf(
     senha_dono: str = Form(""),
 ) -> Response:
     """Protege um PDF com senha de usuário."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
         dono = senha_dono if senha_dono.strip() else None
-        proteger_pdf(
-            str(inp),
-            saida=str(out),
-            senha_usuario=senha_usuario,
-            senha_dono=dono,
-        )
+        try:
+            proteger_pdf(
+                str(inp),
+                saida=str(out),
+                senha_usuario=senha_usuario,
+                senha_dono=dono,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -664,14 +782,25 @@ async def rota_remover_senha(
     senha: str = Form(...),
 ) -> Response:
     """Remove a senha de um PDF protegido."""
-    _validar_extensao_pdf(arquivo.filename)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         inp = Path(tmpdir) / "input.pdf"
         out = Path(tmpdir) / "output.pdf"
-        await _salvar_upload(arquivo, inp)
+        await _salvar_e_validar_upload_pdf(arquivo, inp)
 
-        remover_senha(str(inp), senha=senha, saida=str(out))
+        try:
+            remover_senha(str(inp), senha=senha, saida=str(out))
+        except ValueError as e:
+            # Nunca expõe a senha digitada no erro
+            msg = str(e)
+            if (
+                "senha informada está incorreta" in msg.lower()
+                or "não possui proteção" in msg.lower()
+            ):
+                raise HTTPException(status_code=400, detail=msg)
+            raise HTTPException(
+                status_code=400, detail="Senha incorreta ou inválida para o documento."
+            )
+
         conteudo = out.read_bytes()
 
     return Response(
@@ -696,9 +825,7 @@ async def processar_pdf(
     if operacao == "comprimir":
         return await rota_comprimir_pdf(arquivo=arquivo, nivel=nivel)
     elif operacao == "girar":
-        return await rota_girar_paginas(
-            arquivo=arquivo, graus=graus, paginas=paginas
-        )
+        return await rota_girar_paginas(arquivo=arquivo, graus=graus, paginas=paginas)
     raise HTTPException(
         status_code=400, detail=f"Operação '{operacao}' não reconhecida."
     )

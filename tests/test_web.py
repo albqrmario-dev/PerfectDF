@@ -1,9 +1,11 @@
 """Testes para o backend web do PerfectDF."""
 
 import io
-import json
+import sys
+from typing import Any
 from fastapi.testclient import TestClient
 import pymupdf
+import pytest
 
 from perfectdf.web.app import app
 
@@ -77,10 +79,101 @@ def test_inspecionar_arquivo_invalido() -> None:
     files_ext = {"arquivo": ("teste.txt", io.BytesIO(b"conteudo"), "text/plain")}
     response_ext = client.post("/api/inspecionar", files=files_ext)
     assert response_ext.status_code == 400
+    assert "erro" in response_ext.json()
 
     files_bad = {"arquivo": ("corrompido.pdf", io.BytesIO(b"invalido"), "application/pdf")}
     response_bad = client.post("/api/inspecionar", files=files_bad)
     assert response_bad.status_code == 400
+    assert "erro" in response_bad.json()
+
+
+def test_upload_arquivo_maior_que_50mb() -> None:
+    """Verifica se upload maior que 50MB retorna HTTP 413 com formato padronizado."""
+    conteudo_pesado = io.BytesIO(b"%PDF-" + (b"A" * (50 * 1024 * 1024 + 1024)))
+    files = {"arquivo": ("pesado.pdf", conteudo_pesado, "application/pdf")}
+    response = client.post("/api/inspecionar", files=files)
+    assert response.status_code == 413
+    assert response.json() == {
+        "erro": "O arquivo excede o limite máximo permitido de 50 MB."
+    }
+
+
+def test_arquivo_falso_renomeado_pdf() -> None:
+    """Verifica se arquivo não-PDF renomeado para .pdf é rejeitado com status 400."""
+    falso_pdf = io.BytesIO(b"Este texto claramente nao e um documento pdf valido")
+    files = {"arquivo": ("falso.pdf", falso_pdf, "application/pdf")}
+    response = client.post("/api/inspecionar", files=files)
+    assert response.status_code == 400
+    assert response.json() == {
+        "erro": "O arquivo enviado não é um documento PDF válido."
+    }
+
+
+def test_senha_incorreta_sem_vazar_senha() -> None:
+    """Verifica se senha incorreta retorna 400 com mensagem segura e sem vazar a senha enviada."""
+    pdf_base = _criar_pdf_exemplo(total_paginas=1)
+    files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_base), "application/pdf")}
+    res_prot = client.post(
+        "/api/seguranca/proteger",
+        files=files,
+        data={"senha_usuario": "senhaSuperSecreta123"},
+    )
+    assert res_prot.status_code == 200
+
+    senha_tentada = "senhaErradaTentativa999"
+    files_prot = {"arquivo": ("protegido.pdf", io.BytesIO(res_prot.content), "application/pdf")}
+    res_err = client.post(
+        "/api/seguranca/remover-senha",
+        files=files_prot,
+        data={"senha": senha_tentada},
+    )
+    assert res_err.status_code == 400
+    data = res_err.json()
+    assert "erro" in data
+    assert senha_tentada not in res_err.text
+    assert "A senha informada está incorreta." in data["erro"]
+
+
+def test_pagina_inexistente_retorna_400() -> None:
+    """Verifica se páginas fora do documento retornam erro 400 claro em JSON."""
+    pdf_base = _criar_pdf_exemplo(total_paginas=2)
+    files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_base), "application/pdf")}
+    response = client.post("/api/paginas/extrair", files=files, data={"paginas": "99"})
+    assert response.status_code == 400
+    data = response.json()
+    assert "erro" in data
+    assert "Página inválida: 99" in data["erro"]
+
+
+def test_erro_inesperado_retorna_500_generico(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifica se falha imprevista retorna 500 com formato genérico e sem stack trace."""
+    app_module = sys.modules["perfectdf.web.app"]
+    client_safe = TestClient(app, raise_server_exceptions=False)
+
+    pdf_base = _criar_pdf_exemplo(total_paginas=1)
+    files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_base), "application/pdf")}
+
+    def _falha_forcada(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("Erro interno forçado para teste")
+
+    monkeypatch.setattr(app_module, "girar_paginas", _falha_forcada)
+
+    response = client_safe.post("/api/paginas/girar", files=files, data={"graus": "90"})
+    assert response.status_code == 500
+    assert response.json() == {
+        "erro": "Ocorreu um erro interno ao processar a operação solicitada."
+    }
+    assert "Traceback" not in response.text
+    assert "Erro interno forçado" not in response.text
+
+
+def test_request_validation_error_422() -> None:
+    """Verifica se parâmetros faltando retornam 422 em português no formato {'erro': ...}."""
+    response = client.post("/api/paginas/girar")
+    assert response.status_code == 422
+    assert response.json() == {
+        "erro": "Dados da requisição inválidos ou incompletos."
+    }
 
 
 def test_rota_paginas_extrair_e_excluir() -> None:
