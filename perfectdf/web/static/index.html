@@ -18,12 +18,63 @@
   </header>
 
   <main class="app-main">
-    <section class="welcome-card">
-      <h1>Bem-vindo ao PerfectDF Web</h1>
-      <p>Editor de PDF open source, gratuito e simples de usar diretamente no seu navegador.</p>
-      <div class="card-details">
-        <p><strong>Status da API:</strong> <span id="api-status-text">Verificando...</span></p>
+    <section class="upload-section">
+      <div id="drop-zone" class="drop-zone">
+        <div class="drop-zone-icon">📥</div>
+        <h3>Arraste e solte seu arquivo PDF aqui</h3>
+        <p>ou clique no botão abaixo para selecionar</p>
+        <label for="file-input" class="btn btn-primary">Selecionar PDF</label>
+        <input type="file" id="file-input" accept="application/pdf,.pdf" style="display: none;">
       </div>
+
+      <!-- Card com informações do arquivo carregado -->
+      <div id="file-info-card" class="file-info-card hidden">
+        <div class="file-details">
+          <span class="file-icon">📑</span>
+          <div>
+            <h4 id="file-name">documento.pdf</h4>
+            <p id="file-meta">Tamanho: 0 KB | Páginas: 0</p>
+          </div>
+        </div>
+        <button id="btn-remove-file" class="btn btn-text" title="Remover arquivo">&times;</button>
+      </div>
+
+      <!-- Painel de Operações -->
+      <div id="actions-panel" class="actions-panel hidden">
+        <h3>Ações de Processamento</h3>
+        <div class="form-row">
+          <label for="select-operacao">Operação:</label>
+          <select id="select-operacao" class="input-control">
+            <option value="comprimir">Comprimir PDF</option>
+            <option value="girar">Girar Páginas (90°)</option>
+          </select>
+        </div>
+
+        <div id="params-comprimir" class="form-row">
+          <label for="select-nivel">Nível de Compressão:</label>
+          <select id="select-nivel" class="input-control">
+            <option value="baixo">Baixo (Mais rápido)</option>
+            <option value="medio" selected>Médio (Recomendado)</option>
+            <option value="alto">Alto (Maior redução)</option>
+          </select>
+        </div>
+
+        <div id="params-girar" class="form-row hidden">
+          <label for="input-graus">Graus:</label>
+          <select id="input-graus" class="input-control">
+            <option value="90">90° no sentido horário</option>
+            <option value="180">180°</option>
+            <option value="270">270° (90° anti-horário)</option>
+          </select>
+        </div>
+
+        <div class="action-buttons">
+          <button id="btn-processar" class="btn btn-success">Processar e Baixar PDF</button>
+        </div>
+      </div>
+
+      <!-- Feedback de status -->
+      <div id="feedback-message" class="feedback-message hidden"></div>
     </section>
   </main>
 
