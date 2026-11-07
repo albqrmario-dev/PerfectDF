@@ -413,6 +413,22 @@ python -m perfectdf --help
 
 ---
 
+## 🌐 Interface Web
+
+O **PerfectDF** conta com uma interface web para visualização e edição diretamente no navegador.
+
+### Como Iniciar o Servidor Web
+
+Com o ambiente virtual ativado e as dependências instaladas:
+
+```bash
+uvicorn perfectdf.web.app:app --reload
+```
+
+Acesse em seu navegador: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+
+---
+
 ## 🧪 Como Rodar os Testes
 
 Para executar a suíte de testes com o [pytest](https://pytest.org/):

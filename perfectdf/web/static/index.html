@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PerfectDF — Editor de PDF</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="logo">
+      <span class="logo-icon">📄</span>
+      <span class="logo-title">Perfect<strong>DF</strong></span>
+    </div>
+    <div class="header-status">
+      <span id="api-status-badge" class="badge">Conectando...</span>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <section class="welcome-card">
+      <h1>Bem-vindo ao PerfectDF Web</h1>
+      <p>Editor de PDF open source, gratuito e simples de usar diretamente no seu navegador.</p>
+      <div class="card-details">
+        <p><strong>Status da API:</strong> <span id="api-status-text">Verificando...</span></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>PerfectDF — Licença AGPL-3.0 — Construído com Python, FastAPI e PyMuPDF</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
