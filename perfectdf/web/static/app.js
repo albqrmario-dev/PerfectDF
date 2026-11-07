@@ -1,6 +1,11 @@
 // PerfectDF - Frontend JS
 document.addEventListener("DOMContentLoaded", () => {
-  // Elementos da interface
+  // Configuração do Worker local do pdf.js
+  if (window.pdfjsLib) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.js";
+  }
+
+  // Elementos de status e upload
   const badge = document.getElementById("api-status-badge");
   const dropZone = document.getElementById("drop-zone");
   const fileInput = document.getElementById("file-input");
@@ -17,7 +22,26 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnProcessar = document.getElementById("btn-processar");
   const feedbackMessage = document.getElementById("feedback-message");
 
+  // Elementos do Visualizador PDF
+  const viewerSection = document.getElementById("viewer-section");
+  const btnPrevPage = document.getElementById("btn-prev-page");
+  const btnNextPage = document.getElementById("btn-next-page");
+  const inputPageNum = document.getElementById("input-page-num");
+  const spanPageCount = document.getElementById("span-page-count");
+  const btnZoomIn = document.getElementById("btn-zoom-in");
+  const btnZoomOut = document.getElementById("btn-zoom-out");
+  const spanZoomLevel = document.getElementById("span-zoom-level");
+  const btnRotate = document.getElementById("btn-rotate");
+  const pdfCanvas = document.getElementById("pdf-canvas");
+
   let currentFile = null;
+  let currentPdfDoc = null;
+  let currentPageNum = 1;
+  let currentScale = 1.0;
+  let currentRotation = 0;
+  let isRendering = false;
+  let pendingPageNum = null;
+  let currentRenderTask = null;
 
   // 1. Verificação de status da API
   fetch("/api/ping")
@@ -61,7 +85,93 @@ document.addEventListener("DOMContentLoaded", () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   }
 
-  // Manipulação de arquivo selecionado
+  // Funções do Visualizador PDF (pdf.js)
+  async function loadPdfInViewer(arrayBuffer) {
+    if (!window.pdfjsLib) {
+      console.warn("pdf.js não encontrado.");
+      return;
+    }
+
+    try {
+      const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
+      currentPdfDoc = await loadingTask.promise;
+      currentPageNum = 1;
+      currentRotation = 0;
+
+      if (spanPageCount) spanPageCount.textContent = currentPdfDoc.numPages;
+      if (inputPageNum) {
+        inputPageNum.max = currentPdfDoc.numPages;
+        inputPageNum.value = 1;
+      }
+      if (viewerSection) viewerSection.classList.remove("hidden");
+
+      renderPage(currentPageNum);
+    } catch (err) {
+      console.error("Erro ao carregar visualizador:", err);
+      showFeedback(`Não foi possível exibir o PDF na tela: ${err.message}`, "error");
+    }
+  }
+
+  function queueRenderPage(num) {
+    if (isRendering) {
+      pendingPageNum = num;
+    } else {
+      renderPage(num);
+    }
+  }
+
+  async function renderPage(num) {
+    if (!currentPdfDoc || !pdfCanvas) return;
+    isRendering = true;
+
+    try {
+      const page = await currentPdfDoc.getPage(num);
+      const viewport = page.getViewport({
+        scale: currentScale,
+        rotation: (page.rotate + currentRotation) % 360,
+      });
+
+      const ctx = pdfCanvas.getContext("2d");
+      const outputScale = window.devicePixelRatio || 1;
+
+      pdfCanvas.width = Math.floor(viewport.width * outputScale);
+      pdfCanvas.height = Math.floor(viewport.height * outputScale);
+      pdfCanvas.style.width = Math.floor(viewport.width) + "px";
+      pdfCanvas.style.height = Math.floor(viewport.height) + "px";
+
+      const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+
+      const renderContext = {
+        canvasContext: ctx,
+        transform: transform,
+        viewport: viewport,
+      };
+
+      if (currentRenderTask) {
+        currentRenderTask.cancel();
+      }
+
+      currentRenderTask = page.render(renderContext);
+      await currentRenderTask.promise;
+      currentRenderTask = null;
+      isRendering = false;
+
+      if (inputPageNum) inputPageNum.value = num;
+
+      if (pendingPageNum !== null) {
+        const next = pendingPageNum;
+        pendingPageNum = null;
+        renderPage(next);
+      }
+    } catch (err) {
+      if (err.name !== "RenderingCancelledException") {
+        console.error("Erro na renderização da página:", err);
+      }
+      isRendering = false;
+    }
+  }
+
+  // Manipulação do arquivo selecionado
   async function handleFile(file) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".pdf")) {
@@ -77,7 +187,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (fileInfoCard) fileInfoCard.classList.remove("hidden");
     if (actionsPanel) actionsPanel.classList.remove("hidden");
 
-    // Inspeciona o arquivo no backend para obter total de páginas
+    // Lê os bytes para o visualizador imediatamente no navegador
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const arrayBuffer = e.target.result;
+      await loadPdfInViewer(arrayBuffer);
+    };
+    reader.readAsArrayBuffer(file);
+
+    // Inspeciona no backend
     const formData = new FormData();
     formData.append("arquivo", file);
 
@@ -92,21 +210,20 @@ document.addEventListener("DOMContentLoaded", () => {
         if (fileMeta) {
           fileMeta.textContent = `Tamanho: ${formatBytes(data.tamanho)} | Páginas: ${data.total_paginas}`;
         }
-      } else {
-        const err = await res.json().catch(() => ({}));
-        showFeedback(err.detail || "Erro ao ler metadados do PDF.", "error");
       }
     } catch (err) {
-      // Ignora erro secundário de inspeção, mantém arquivo pronto
+      // Ignora erro secundário de inspeção
       if (fileMeta) fileMeta.textContent = `Tamanho: ${formatBytes(file.size)}`;
     }
   }
 
   function resetFile() {
     currentFile = null;
+    currentPdfDoc = null;
     if (fileInput) fileInput.value = "";
     if (fileInfoCard) fileInfoCard.classList.add("hidden");
     if (actionsPanel) actionsPanel.classList.add("hidden");
+    if (viewerSection) viewerSection.classList.add("hidden");
     clearFeedback();
   }
 
@@ -136,7 +253,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Evento de seleção via input file
+  // Seleção de arquivo por input
   if (fileInput) {
     fileInput.addEventListener("change", (e) => {
       const files = e.target.files;
@@ -146,9 +263,62 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Remoção do arquivo
+  // Remoção de arquivo
   if (btnRemoveFile) {
     btnRemoveFile.addEventListener("click", resetFile);
+  }
+
+  // Controles do Visualizador (Toolbar)
+  if (btnPrevPage) {
+    btnPrevPage.addEventListener("click", () => {
+      if (currentPageNum <= 1) return;
+      currentPageNum--;
+      queueRenderPage(currentPageNum);
+    });
+  }
+
+  if (btnNextPage) {
+    btnNextPage.addEventListener("click", () => {
+      if (!currentPdfDoc || currentPageNum >= currentPdfDoc.numPages) return;
+      currentPageNum++;
+      queueRenderPage(currentPageNum);
+    });
+  }
+
+  if (inputPageNum) {
+    inputPageNum.addEventListener("change", () => {
+      if (!currentPdfDoc) return;
+      let val = parseInt(inputPageNum.value, 10);
+      if (isNaN(val) || val < 1) val = 1;
+      if (val > currentPdfDoc.numPages) val = currentPdfDoc.numPages;
+      currentPageNum = val;
+      queueRenderPage(currentPageNum);
+    });
+  }
+
+  if (btnZoomIn) {
+    btnZoomIn.addEventListener("click", () => {
+      if (currentScale >= 2.5) return;
+      currentScale += 0.25;
+      if (spanZoomLevel) spanZoomLevel.textContent = `${Math.round(currentScale * 100)}%`;
+      queueRenderPage(currentPageNum);
+    });
+  }
+
+  if (btnZoomOut) {
+    btnZoomOut.addEventListener("click", () => {
+      if (currentScale <= 0.5) return;
+      currentScale -= 0.25;
+      if (spanZoomLevel) spanZoomLevel.textContent = `${Math.round(currentScale * 100)}%`;
+      queueRenderPage(currentPageNum);
+    });
+  }
+
+  if (btnRotate) {
+    btnRotate.addEventListener("click", () => {
+      currentRotation = (currentRotation + 90) % 360;
+      queueRenderPage(currentPageNum);
+    });
   }
 
   // Alternância de parâmetros da operação
@@ -199,7 +369,6 @@ document.addEventListener("DOMContentLoaded", () => {
           throw new Error(errData.detail || `Erro HTTP ${response.status}`);
         }
 
-        // Recupera o nome sugerido para o arquivo
         let downloadName = `processado_${currentFile.name}`;
         const disposition = response.headers.get("Content-Disposition");
         if (disposition && disposition.includes("filename=")) {
@@ -209,8 +378,13 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }
 
-        // Gera o blob e dispara o download automático
         const blob = await response.blob();
+
+        // Atualiza a visualização na tela com o PDF processado
+        const processedBuffer = await blob.arrayBuffer();
+        await loadPdfInViewer(processedBuffer);
+
+        // Dispara o download
         const downloadUrl = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = downloadUrl;

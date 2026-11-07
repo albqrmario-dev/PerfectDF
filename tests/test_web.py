@@ -28,11 +28,13 @@ def test_ping() -> None:
 
 
 def test_index() -> None:
-    """Verifica se a rota raiz entrega o index.html."""
+    """Verifica se a rota raiz entrega o index.html com os elementos do visualizador."""
     response = client.get("/")
     assert response.status_code == 200
     assert "PerfectDF" in response.text
     assert "text/html" in response.headers.get("content-type", "")
+    assert "viewer-section" in response.text
+    assert "/static/vendor/pdfjs/pdf.min.js" in response.text
 
 
 def test_static_files() -> None:
@@ -44,6 +46,17 @@ def test_static_files() -> None:
     response_js = client.get("/static/app.js")
     assert response_js.status_code == 200
     assert "/api/ping" in response_js.text
+
+
+def test_pdfjs_vendor_files() -> None:
+    """Verifica se os arquivos da biblioteca pdf.js estão presentes e são servidos localmente sem CDN."""
+    res_lib = client.get("/static/vendor/pdfjs/pdf.min.js")
+    assert res_lib.status_code == 200
+    assert "pdfjsLib" in res_lib.text
+
+    res_worker = client.get("/static/vendor/pdfjs/pdf.worker.min.js")
+    assert res_worker.status_code == 200
+    assert len(res_worker.content) > 100_000
 
 
 def test_inspecionar_pdf_valido() -> None:
