@@ -44,7 +44,7 @@ def test_static_files() -> None:
     """Verifica se os arquivos estáticos são servidos em /static."""
     response_css = client.get("/static/style.css")
     assert response_css.status_code == 200
-    assert "--primary" in response_css.text
+    assert ":root" in response_css.text
 
     response_js = client.get("/static/app.js")
     assert response_js.status_code == 200

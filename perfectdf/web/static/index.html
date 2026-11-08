@@ -3,54 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08162b">
   <title>PerfectDF — Editor de PDF</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/img/favicon-180.png">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header class="app-header">
-    <div class="logo">
-      <span class="logo-icon">📄</span>
-      <span class="logo-title">Perfect<strong>DF</strong></span>
-    </div>
-    <div class="header-status">
-      <span id="api-status-badge" class="badge">Conectando...</span>
-    </div>
-  </header>
-
-  <main class="app-main">
-    <!-- Seção de Upload Principal -->
-    <section class="upload-section">
-      <div id="drop-zone" class="drop-zone">
-        <div class="drop-zone-icon">📥</div>
-        <h3>Arraste e solte seu arquivo PDF aqui</h3>
-        <p>ou clique no botão abaixo para selecionar</p>
-        <label for="file-input" class="btn btn-primary">Selecionar PDF</label>
-        <input type="file" id="file-input" accept="application/pdf,.pdf" style="display: none;">
-      </div>
-
-      <!-- Card com informações do arquivo -->
-      <div id="file-info-card" class="file-info-card hidden">
-        <div class="file-details">
-          <span class="file-icon">📑</span>
-          <div>
-            <h4 id="file-name">documento.pdf</h4>
-            <p id="file-meta">Tamanho: 0 KB | Páginas: 0</p>
-          </div>
-        </div>
-        <button id="btn-remove-file" class="btn btn-text" title="Remover arquivo">&times;</button>
-      </div>
-
-      <!-- Painel de Funcionalidades Completo -->
-      <div id="actions-panel" class="actions-panel hidden">
-        <div class="tabs-header">
-          <button class="tab-btn active" data-tab="tab-paginas">Páginas</button>
-          <button class="tab-btn" data-tab="tab-anotacoes">Anotações</button>
-          <button class="tab-btn" data-tab="tab-formularios">Formulários</button>
-          <button class="tab-btn" data-tab="tab-texto">Texto & Metadados</button>
-          <button class="tab-btn" data-tab="tab-seguranca">Otimização & Segurança</button>
-          <button class="tab-btn" data-tab="tab-juntar">Juntar PDFs</button>
-        </div>
-
+  <div class="app-shell">
+    <header class="app-header">
+      <a class="brand" href="#" aria-label="PerfectDF, início">
+        <img src="/static/img/logo-header.png" alt="" width="38" height="32">
+        <span>PerfectDF</span>
+      </a>
+        <nav class="tabs-header" aria-label="Categorias de ferramentas" role="tablist">
+          <button class="tab-btn active" data-tab="tab-paginas"><svg viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h4M8 13h8M8 17h6"/></svg>Páginas</button>
+          <button class="tab-btn" data-tab="tab-anotacoes"><svg viewBox="0 0 24 24" fill="none"><path d="m4 16 10.5-10.5a2.12 2.12 0 0 1 3 3L7 19H4v-3Z"/><path d="m13 7 4 4"/></svg>Anotações</button>
+          <button class="tab-btn" data-tab="tab-formularios"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 8h8M8 12h2m3 0h3M8 16h2m3 0h3"/></svg>Formulários</button>
+          <button class="tab-btn" data-tab="tab-texto"><svg viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h4M8 13h8M8 17h8"/></svg>Texto e Metadados</button>
+          <button class="tab-btn" data-tab="tab-seguranca"><svg viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/></svg>Segurança e Otimização</button>
+          <button class="tab-btn" data-tab="tab-juntar"><svg viewBox="0 0 24 24" fill="none"><path d="M8 7h12v14H8zM4 17V3h12"/><path d="M11 11h6M11 15h6"/></svg>Juntar</button>
+        </nav>
+      <div class="header-status"><span class="status-light" aria-hidden="true"></span><span id="api-status-badge" class="badge">Conectando...</span></div>
+    </header>
+    <section class="tool-area" aria-label="Faixa de ferramentas">
+      <div class="tool-area-heading"><h1>Operação</h1><span>Configure e aplique ao documento</span></div>
+<div id="actions-panel" class="actions-panel hidden">
         <!-- Aba Páginas -->
         <div id="tab-paginas" class="tab-pane active">
           <div class="form-row">
@@ -250,11 +228,58 @@
 
         <!-- Botão Principal de Ação -->
         <div class="action-buttons">
-          <button id="btn-executar-acao" class="btn btn-success">Executar Operação</button>
+          <button id="btn-executar-acao" class="btn btn-success">Aplicar</button>
+        </div>
+      </div>
+    </section>
+    <main class="app-main">
+      <section class="document-bar" aria-label="Documento selecionado">
+<div id="file-info-card" class="file-info-card hidden">
+        <div class="file-details">
+          <span class="file-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M6 2.75h8l4.5 4.5v14H6a2 2 0 0 1-2-2v-16a2 2 0 0 1 2-2Z"/><path d="M14 2.75v5h4.5M8 13h8M8 17h6"/></svg></span>
+          <div>
+            <h4 id="file-name">documento.pdf</h4>
+            <p id="file-meta">Tamanho: 0 KB | Páginas: 0</p>
+          </div>
+        </div>
+        <button id="btn-remove-file" class="btn btn-text" title="Remover arquivo">&times;</button>
+      </div>
+      </section>
+      <section class="viewer-workspace" aria-label="Documento PDF">
+        <div class="viewer-empty-state">
+<div id="drop-zone" class="drop-zone">
+        <div class="drop-zone-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 15.5v3A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5v-3"/></svg></div>
+        <h3>Arraste e solte seu arquivo PDF aqui</h3>
+        <p>ou clique no botão abaixo para selecionar</p>
+        <label for="file-input" class="btn btn-primary">Selecionar PDF</label>
+        <input type="file" id="file-input" accept="application/pdf,.pdf" style="display: none;">
+      </div>
+        </div>
+        <section class="viewer-stage" aria-label="Pré-visualização do PDF">
+          <div class="viewer-stage-heading"><h2>Documento</h2><span>Visualizador PDF.js</span></div>
+    <section id="viewer-section" class="viewer-section hidden">
+      <div class="viewer-toolbar">
+        <div class="toolbar-group">
+          <button id="btn-prev-page" class="btn btn-tool" title="Página Anterior" aria-label="Página anterior"><svg viewBox="0 0 24 24" fill="none"><path d="m14.5 5-7 7 7 7"/></svg></button>
+          <span class="page-indicator">
+            Página <input type="number" id="input-page-num" min="1" value="1"> de <span id="span-page-count">1</span>
+          </span>
+          <button id="btn-next-page" class="btn btn-tool" title="Próxima Página" aria-label="Próxima página"><svg viewBox="0 0 24 24" fill="none"><path d="m9.5 5 7 7-7 7"/></svg></button>
+        </div>
+
+        <div class="toolbar-group">
+          <button id="btn-zoom-out" class="btn btn-tool" title="Reduzir Zoom">-</button>
+          <span id="span-zoom-level" class="zoom-level">100%</span>
+          <button id="btn-zoom-in" class="btn btn-tool" title="Aumentar Zoom">+</button>
+          <button id="btn-rotate" class="btn btn-tool" title="Girar Visualização 90°" aria-label="Girar visualização"><svg viewBox="0 0 24 24" fill="none"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 11.8-2L20 12M4 12l2.7 5a7 7 0 0 0 11.8-2"/></svg><span>Girar</span></button>
         </div>
       </div>
 
-      <!-- Feedback de status -->
+      <div id="canvas-container" class="canvas-container">
+        <canvas id="pdf-canvas"></canvas>
+      </div>
+    </section>
+<!-- Feedback de status -->
       <div id="feedback-message" class="feedback-message hidden"></div>
 
       <!-- Modal/Caixa de Resultado Textual (ex: Extração de texto / Lista de campos) -->
@@ -265,38 +290,16 @@
         </div>
         <pre id="text-result-content"></pre>
       </div>
-    </section>
-
-    <!-- Seção do Visualizador PDF (pdf.js) -->
-    <section id="viewer-section" class="viewer-section hidden">
-      <div class="viewer-toolbar">
-        <div class="toolbar-group">
-          <button id="btn-prev-page" class="btn btn-tool" title="Página Anterior">◀</button>
-          <span class="page-indicator">
-            Página <input type="number" id="input-page-num" min="1" value="1"> de <span id="span-page-count">1</span>
-          </span>
-          <button id="btn-next-page" class="btn btn-tool" title="Próxima Página">▶</button>
-        </div>
-
-        <div class="toolbar-group">
-          <button id="btn-zoom-out" class="btn btn-tool" title="Reduzir Zoom">-</button>
-          <span id="span-zoom-level" class="zoom-level">100%</span>
-          <button id="btn-zoom-in" class="btn btn-tool" title="Aumentar Zoom">+</button>
-          <button id="btn-rotate" class="btn btn-tool" title="Girar Visualização 90°">↻ Girar</button>
-        </div>
-      </div>
-
-      <div id="canvas-container" class="canvas-container">
-        <canvas id="pdf-canvas"></canvas>
-      </div>
-    </section>
-  </main>
-
-  <footer class="app-footer">
-    <p>PerfectDF — Licença AGPL-3.0 — Construído com Python, FastAPI e PyMuPDF</p>
-  </footer>
-
-  <!-- pdf.js local em static/vendor sem CDN -->
+        </section>
+      </section>
+    </main>
+      <footer class="app-footer" aria-label="Estado do documento">
+        <div class="status-item"><span class="status-label">Arquivo</span><span id="footer-file">Nenhum arquivo</span></div>
+        <div class="status-item"><span class="status-label">Páginas</span><span id="footer-pages">—</span></div>
+        <div class="status-item"><span class="status-label">Última operação</span><span id="footer-operation">Aguardando</span></div>
+        <div class="status-item status-errors"><span class="status-label">Erros</span><span id="footer-errors">Nenhum</span></div>
+      </footer>
+  </div>
   <script src="/static/vendor/pdfjs/pdf.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
