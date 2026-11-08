@@ -1,6 +1,4 @@
-/* Paleta extraída por quantização dos pixels opacos da logo: ciano #00C0FC,
-   azul médio #0062FB e azul-marinho #000F3B. O fundo é uma variação do
-   miolo marinho; o ciano conduz foco e ação, como os traços da marca. */
+/* Paleta da marca: ciano, azul e azul-marinho. */
 :root {
   color-scheme: dark;
   --page: #08162b;
@@ -13,7 +11,6 @@
   --text-muted: #a8bdd2;
   --text-faint: #7891aa;
   --accent: #00c0fc;
-  --accent-strong: #0062fb;
   --accent-ink: #04172b;
   --error: #ff7771;
   --error-bg: #3b252c;
@@ -273,7 +270,6 @@ body:has(#file-info-card.hidden) .viewer-stage-heading { display: none; }
     --text-muted: #4e6881;
     --text-faint: #6b859e;
     --accent: #0062fb;
-    --accent-strong: #0062fb;
     --accent-ink: #fff;
     --error: #a5363b;
     --error-bg: #fae9e9;

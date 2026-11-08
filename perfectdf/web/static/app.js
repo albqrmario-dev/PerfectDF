@@ -1,11 +1,8 @@
-// PerfectDF - Frontend JS Completo
 document.addEventListener("DOMContentLoaded", () => {
-  // Configuração do Worker local do pdf.js
   if (window.pdfjsLib) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.js";
   }
 
-  // Elementos globais
   const badge = document.getElementById("api-status-badge");
   const dropZone = document.getElementById("drop-zone");
   const fileInput = document.getElementById("file-input");
@@ -31,7 +28,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const textResultContent = document.getElementById("text-result-content");
   const btnCloseTextResult = document.getElementById("btn-close-text-result");
 
-  // Elementos do Visualizador PDF
   const viewerSection = document.getElementById("viewer-section");
   const btnPrevPage = document.getElementById("btn-prev-page");
   const btnNextPage = document.getElementById("btn-next-page");
@@ -43,14 +39,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnRotate = document.getElementById("btn-rotate");
   const pdfCanvas = document.getElementById("pdf-canvas");
 
-  // Abas
   const tabBtns = document.querySelectorAll(".tab-btn");
   const tabPanes = document.querySelectorAll(".tab-pane");
   let activeTabId = "tab-paginas";
 
-  // Estado
   let currentFile = null;
   let originalFile = null;
+  // Mantém a prévia para alternar entre documentos e baixar depois.
   let previewBlob = null;
   let previewDownloadName = "";
   let previewToolKey = "";
@@ -68,7 +63,6 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentRenderTask = null;
   let joinFiles = [];
 
-  // 1. Verificação de status da API
   fetch("/api/ping")
     .then((res) => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -89,7 +83,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-  // Funções de feedback
   function showFeedback(text, type = "info") {
     if (!feedbackMessage) return;
     feedbackMessage.textContent = text;
@@ -391,7 +384,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Controle de Abas
   tabBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
       const previousTabId = activeTabId;
@@ -426,8 +418,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   renderJoinFiles();
 
-  // Controles dinâmicos de sub-opções
-  // Páginas
   const selectSubPaginas = document.getElementById("select-sub-paginas");
   const boxPaginasGraus = document.getElementById("box-paginas-graus");
   const boxPaginasLista = document.getElementById("box-paginas-lista");
@@ -442,7 +432,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Anotações
   const selectSubAnotacoes = document.getElementById("select-sub-anotacoes");
   const boxAnotMarca = document.getElementById("box-anot-marcadagua");
   const boxAnotNumerar = document.getElementById("box-anot-numerar");
@@ -459,7 +448,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Formulários
   const selectSubForm = document.getElementById("select-sub-formularios");
   const boxFormPreencher = document.getElementById("box-form-preencher");
   if (selectSubForm) {
@@ -469,7 +457,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Texto
   const selectSubTexto = document.getElementById("select-sub-texto");
   const boxTextoAdd = document.getElementById("box-texto-adicionar");
   const boxTextoMeta = document.getElementById("box-texto-metadados");
@@ -481,7 +468,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Segurança
   const selectSubSeg = document.getElementById("select-sub-seguranca");
   const boxSegComprimir = document.getElementById("box-seg-comprimir");
   const boxSegSenha = document.getElementById("box-seg-senha");
@@ -493,7 +479,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Funções do Visualizador PDF (pdf.js)
   async function loadPdfInViewer(arrayBuffer) {
     if (!window.pdfjsLib) return false;
     try {
@@ -577,7 +562,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Manipulação do arquivo selecionado
   async function handleFile(file) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".pdf")) {
@@ -598,7 +582,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (fileInfoCard) fileInfoCard.classList.remove("hidden");
     if (actionsPanel) actionsPanel.classList.remove("hidden");
 
-    // Lê os bytes para o visualizador imediatamente no navegador
     const reader = new FileReader();
     reader.onload = async (e) => {
       const arrayBuffer = e.target.result;
@@ -606,7 +589,6 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     reader.readAsArrayBuffer(file);
 
-    // Inspeciona no backend
     const formData = new FormData();
     formData.append("arquivo", file);
 
@@ -645,7 +627,6 @@ document.addEventListener("DOMContentLoaded", () => {
     hideTextResult();
   }
 
-  // Eventos de Drag & Drop
   if (dropZone) {
     ["dragenter", "dragover"].forEach((eventName) => {
       dropZone.addEventListener(eventName, (e) => {
@@ -695,7 +676,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Seleção de arquivo por input
   if (fileInput) {
     fileInput.addEventListener("change", (e) => {
       const files = e.target.files;
@@ -709,7 +689,6 @@ document.addEventListener("DOMContentLoaded", () => {
     btnRemoveFile.addEventListener("click", resetFile);
   }
 
-  // Controles do Visualizador (Toolbar)
   if (btnPrevPage) {
     btnPrevPage.addEventListener("click", () => {
       if (currentPageNum <= 1) return;
@@ -762,7 +741,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Helper para disparar download e atualizar visualizador com novo PDF
   async function handlePdfDownloadResponse(response, fallbackName) {
     let downloadName = fallbackName;
     const disposition = response.headers.get("Content-Disposition");
@@ -775,7 +753,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const blob = await response.blob();
 
-    // Atualiza visualização na tela
     const processedBuffer = await blob.arrayBuffer();
     await loadPdfInViewer(processedBuffer);
 
@@ -795,23 +772,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     updatePreviewControls();
 
-    // Dispara download
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = downloadUrl;
-    a.download = downloadName;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(downloadUrl);
-    a.remove();
+    downloadBlob(blob, downloadName);
 
     showFeedback(`Sucesso! Operação concluída. Arquivo '${downloadName}' baixado.`, "success");
   }
 
-  // Execução da Ação Selecionada
   if (btnExecutar) {
     btnExecutar.addEventListener("click", async () => {
-      // Caso especial: Juntar PDFs
       if (activeTabId === "tab-juntar") {
         const files = joinFiles;
         if (files.length < 2) {
@@ -852,7 +819,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // Demais abas necessitam de currentFile
       if (!currentFile) {
         showFeedback("Selecione um arquivo PDF antes de executar.", "error");
         return;
@@ -879,7 +845,6 @@ document.addEventListener("DOMContentLoaded", () => {
       let url = "";
       let isJsonResult = false;
 
-      // Monta os parâmetros conforme a aba ativa
       if (activeTabId === "tab-paginas") {
         const acao = selectSubPaginas?.value;
         if (acao === "girar") {

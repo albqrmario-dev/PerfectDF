@@ -29,7 +29,6 @@
     <section class="tool-area" aria-label="Faixa de ferramentas">
       <div class="tool-area-heading"><h1>Operação</h1><span>Configure e aplique ao documento</span></div>
 <div id="actions-panel" class="actions-panel hidden">
-        <!-- Aba Páginas -->
         <div id="tab-paginas" class="tab-pane active">
           <div class="form-row">
             <label for="select-sub-paginas">Ação de Página:</label>
@@ -61,7 +60,6 @@
           </div>
         </div>
 
-        <!-- Aba Anotações -->
         <div id="tab-anotacoes" class="tab-pane">
           <div class="form-row">
             <label for="select-sub-anotacoes">Tipo de Anotação:</label>
@@ -73,7 +71,6 @@
             </select>
           </div>
 
-          <!-- Campos Marca d'Água -->
           <div id="box-anot-marcadagua" class="sub-form-group">
             <div class="form-row">
               <label for="input-marca-texto">Texto da Marca d'Água:</label>
@@ -85,7 +82,6 @@
             </div>
           </div>
 
-          <!-- Campos Numeração -->
           <div id="box-anot-numerar" class="sub-form-group hidden">
             <div class="form-row">
               <label for="input-num-formato">Formato (use {n} e {total}):</label>
@@ -103,7 +99,6 @@
             </div>
           </div>
 
-          <!-- Campos Nota -->
           <div id="box-anot-nota" class="sub-form-group hidden">
             <div class="form-row">
               <label for="input-nota-texto">Conteúdo da Nota:</label>
@@ -115,7 +110,6 @@
             </div>
           </div>
 
-          <!-- Campos Destacar -->
           <div id="box-anot-destacar" class="sub-form-group hidden">
             <div class="form-row">
               <label for="input-destaque-termo">Termo para Localizar e Realçar:</label>
@@ -132,7 +126,6 @@
           </div>
         </div>
 
-        <!-- Aba Formulários -->
         <div id="tab-formularios" class="tab-pane">
           <div class="form-row">
             <label for="select-sub-formularios">Ação do Formulário:</label>
@@ -149,7 +142,6 @@
           </div>
         </div>
 
-        <!-- Aba Texto & Metadados -->
         <div id="tab-texto" class="tab-pane">
           <div class="form-row">
             <label for="select-sub-texto">Ação:</label>
@@ -191,7 +183,6 @@
           </div>
         </div>
 
-        <!-- Aba Otimização & Segurança -->
         <div id="tab-seguranca" class="tab-pane">
           <div class="form-row">
             <label for="select-sub-seguranca">Ação:</label>
@@ -217,7 +208,6 @@
           </div>
         </div>
 
-        <!-- Aba Juntar PDFs -->
         <div id="tab-juntar" class="tab-pane">
           <p class="tab-info">A lista define a ordem das páginas no PDF final.</p>
           <div class="form-row">
@@ -227,7 +217,6 @@
           <div id="lista-arquivos-juntar" class="files-preview-list" aria-live="polite"></div>
         </div>
 
-        <!-- Botão Principal de Ação -->
         <div class="action-buttons">
           <button id="btn-executar-acao" class="btn btn-success">Pré-visualizar</button>
           <button id="btn-baixar-previa" class="btn btn-download" type="button" disabled>Baixar</button>
@@ -291,10 +280,8 @@
         <canvas id="pdf-canvas"></canvas>
       </div>
     </section>
-<!-- Feedback de status -->
       <div id="feedback-message" class="feedback-message hidden"></div>
 
-      <!-- Modal/Caixa de Resultado Textual (ex: Extração de texto / Lista de campos) -->
       <div id="text-result-box" class="text-result-box hidden">
         <div class="text-result-header">
           <h4 id="text-result-title">Resultado</h4>

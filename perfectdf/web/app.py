@@ -1,4 +1,4 @@
-"""Aplicação backend FastAPI para a interface web do PerfectDF."""
+"""Interface web do PerfectDF."""
 
 import json
 import logging
@@ -36,12 +36,10 @@ from perfectdf.paginas import (
 from perfectdf.seguranca import proteger_pdf, remover_senha
 from perfectdf.texto import adicionar_texto, extrair_texto
 
-# Limite máximo de upload: 50 MB
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 
 logger = logging.getLogger("perfectdf.web")
 
-# Diretório base dos arquivos estáticos
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(
@@ -50,18 +48,12 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Monta o diretório de arquivos estáticos
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-
-# =========================================================================
-# Exception Handlers Globais (JSON seguro sem stack trace e sem vazamento)
-# =========================================================================
 
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    """Retorna respostas HTTP padronizadas com a chave 'erro'."""
+    """Padroniza as respostas de erro HTTP."""
     return JSONResponse(
         status_code=exc.status_code,
         content={"erro": str(exc.detail)},
@@ -72,7 +64,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    """Captura erros de validação da requisição (422) retornando mensagem clara em português."""
+    """Retorna uma mensagem em português para erros de validação."""
     return JSONResponse(
         status_code=422,
         content={"erro": "Dados da requisição inválidos ou incompletos."},
@@ -83,7 +75,7 @@ async def validation_exception_handler(
 async def generic_exception_handler(
     request: Request, exc: Exception
 ) -> JSONResponse:
-    """Captura exceções inesperadas registrando apenas o tipo da exceção e a rota no log."""
+    """Registra a rota e o tipo de exceção sem expor detalhes ao cliente."""
     logger.error("Erro interno %s na rota %s", type(exc).__name__, request.url.path)
     return JSONResponse(
         status_code=500,
@@ -91,13 +83,8 @@ async def generic_exception_handler(
     )
 
 
-# =========================================================================
-# Helpers de Validação e Gravação Segura
-# =========================================================================
-
-
 def _validar_extensao_pdf(nome_arquivo: str | None) -> None:
-    """Valida se o arquivo informado possui extensão .pdf."""
+    """Exige que o arquivo tenha extensão .pdf."""
     if not nome_arquivo or not nome_arquivo.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=400,
@@ -106,10 +93,7 @@ def _validar_extensao_pdf(nome_arquivo: str | None) -> None:
 
 
 async def _salvar_e_validar_upload_pdf(arquivo: UploadFile, destino: Path) -> int:
-    """Salva o UploadFile em disco com limite de 50MB e valida a integridade do PDF.
-
-    Garante fechamento imediato com doc.close() em bloco try/finally.
-    """
+    """Salva o PDF enviado e valida seu tamanho e conteúdo."""
     _validar_extensao_pdf(arquivo.filename)
 
     tamanho = 0
@@ -150,19 +134,19 @@ async def _salvar_e_validar_upload_pdf(arquivo: UploadFile, destino: Path) -> in
 
 @app.get("/api/ping")
 def ping() -> dict[str, str]:
-    """Rota de verificação de integridade da API."""
+    """Verifica se a API está disponível."""
     return {"status": "ok", "message": "pong"}
 
 
 @app.get("/")
 def index() -> FileResponse:
-    """Serve a página principal da interface web."""
+    """Serve a página inicial."""
     return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.post("/api/inspecionar")
 async def inspecionar_pdf(arquivo: UploadFile = File(...)) -> dict[str, Any]:
-    """Inspeciona um arquivo PDF enviado e retorna metadados e contagem de páginas."""
+    """Retorna metadados e número de páginas do PDF."""
     with tempfile.TemporaryDirectory() as tmpdir:
         temp_path = Path(tmpdir) / "upload.pdf"
         tamanho = await _salvar_e_validar_upload_pdf(arquivo, temp_path)
@@ -186,11 +170,6 @@ async def inspecionar_pdf(arquivo: UploadFile = File(...)) -> dict[str, Any]:
         "total_paginas": total_paginas,
         "metadados": metadados,
     }
-
-
-# =========================================================================
-# 1. PÁGINAS (Girar, Extrair, Excluir, Reordenar, Juntar)
-# =========================================================================
 
 
 @app.post("/api/paginas/girar")
@@ -359,11 +338,6 @@ async def rota_juntar_pdfs(
     )
 
 
-# =========================================================================
-# 2. ANOTAÇÕES (Marca d'água, Numeração, Nota, Destacar)
-# =========================================================================
-
-
 @app.post("/api/anotacoes/marca-dagua")
 async def rota_marca_dagua(
     arquivo: UploadFile = File(...),
@@ -520,11 +494,6 @@ async def rota_destacar_texto(
     )
 
 
-# =========================================================================
-# 3. FORMULÁRIOS (Listar campos, Preencher, Achatar)
-# =========================================================================
-
-
 @app.post("/api/formularios/listar")
 async def rota_listar_campos(
     arquivo: UploadFile = File(...),
@@ -602,11 +571,6 @@ async def rota_achatar_formulario(
             "Content-Disposition": f'attachment; filename="achatado_{arquivo.filename}"'
         },
     )
-
-
-# =========================================================================
-# 4. TEXTO & METADADOS (Extrair texto, Adicionar texto, Editar metadados)
-# =========================================================================
 
 
 @app.post("/api/texto/extrair")
@@ -710,11 +674,6 @@ async def rota_editar_metadados(
     )
 
 
-# =========================================================================
-# 5. COMPRESSÃO & SEGURANÇA (Comprimir, Proteger, Remover Senha)
-# =========================================================================
-
-
 @app.post("/api/compressao/comprimir")
 async def rota_comprimir_pdf(
     arquivo: UploadFile = File(...),
@@ -790,7 +749,7 @@ async def rota_remover_senha(
         try:
             remover_senha(str(inp), senha=senha, saida=str(out))
         except ValueError as e:
-            # Nunca expõe a senha digitada no erro
+            # Só devolvemos mensagens que não incluem a senha digitada.
             msg = str(e)
             if (
                 "senha informada está incorreta" in msg.lower()
@@ -812,7 +771,6 @@ async def rota_remover_senha(
     )
 
 
-# Rota retrocompatível de processamento geral
 @app.post("/api/processar")
 async def processar_pdf(
     arquivo: UploadFile = File(...),
@@ -821,7 +779,7 @@ async def processar_pdf(
     graus: int = Form(90),
     paginas: str = Form(""),
 ) -> Response:
-    """Despachante geral para compatibilidade com versões iniciais."""
+    """Mantém compatibilidade com a rota de processamento antiga."""
     if operacao == "comprimir":
         return await rota_comprimir_pdf(arquivo=arquivo, nivel=nivel)
     elif operacao == "girar":

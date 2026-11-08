@@ -13,7 +13,6 @@ client = TestClient(app)
 
 
 def _criar_pdf_exemplo(total_paginas: int = 2) -> bytes:
-    """Cria um PDF simples em memória para uso nos testes."""
     doc = pymupdf.open()
     for i in range(total_paginas):
         page = doc.new_page(width=595, height=842)
@@ -24,14 +23,12 @@ def _criar_pdf_exemplo(total_paginas: int = 2) -> bytes:
 
 
 def test_ping() -> None:
-    """Verifica a rota de healthcheck /api/ping."""
     response = client.get("/api/ping")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "message": "pong"}
 
 
 def test_index() -> None:
-    """Verifica se a rota raiz entrega o index.html com os elementos do visualizador."""
     response = client.get("/")
     assert response.status_code == 200
     assert "PerfectDF" in response.text
@@ -41,7 +38,6 @@ def test_index() -> None:
 
 
 def test_static_files() -> None:
-    """Verifica se os arquivos estáticos são servidos em /static."""
     response_css = client.get("/static/style.css")
     assert response_css.status_code == 200
     assert ":root" in response_css.text
@@ -52,7 +48,6 @@ def test_static_files() -> None:
 
 
 def test_pdfjs_vendor_files() -> None:
-    """Verifica se os arquivos da biblioteca pdf.js estão presentes e são servidos localmente sem CDN."""
     res_lib = client.get("/static/vendor/pdfjs/pdf.min.js")
     assert res_lib.status_code == 200
     assert "pdfjsLib" in res_lib.text
@@ -63,7 +58,6 @@ def test_pdfjs_vendor_files() -> None:
 
 
 def test_inspecionar_pdf_valido() -> None:
-    """Testa a rota /api/inspecionar com PDF válido."""
     pdf_bytes = _criar_pdf_exemplo(total_paginas=3)
     files = {"arquivo": ("exemplo.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
     response = client.post("/api/inspecionar", files=files)
@@ -75,7 +69,6 @@ def test_inspecionar_pdf_valido() -> None:
 
 
 def test_inspecionar_arquivo_invalido() -> None:
-    """Testa a rota /api/inspecionar com arquivo sem extensão .pdf ou corrompido."""
     files_ext = {"arquivo": ("teste.txt", io.BytesIO(b"conteudo"), "text/plain")}
     response_ext = client.post("/api/inspecionar", files=files_ext)
     assert response_ext.status_code == 400
@@ -88,7 +81,6 @@ def test_inspecionar_arquivo_invalido() -> None:
 
 
 def test_upload_arquivo_maior_que_50mb() -> None:
-    """Verifica se upload maior que 50MB retorna HTTP 413 com formato padronizado."""
     conteudo_pesado = io.BytesIO(b"%PDF-" + (b"A" * (50 * 1024 * 1024 + 1024)))
     files = {"arquivo": ("pesado.pdf", conteudo_pesado, "application/pdf")}
     response = client.post("/api/inspecionar", files=files)
@@ -99,7 +91,6 @@ def test_upload_arquivo_maior_que_50mb() -> None:
 
 
 def test_arquivo_falso_renomeado_pdf() -> None:
-    """Verifica se arquivo não-PDF renomeado para .pdf é rejeitado com status 400."""
     falso_pdf = io.BytesIO(b"Este texto claramente nao e um documento pdf valido")
     files = {"arquivo": ("falso.pdf", falso_pdf, "application/pdf")}
     response = client.post("/api/inspecionar", files=files)
@@ -110,7 +101,6 @@ def test_arquivo_falso_renomeado_pdf() -> None:
 
 
 def test_senha_incorreta_sem_vazar_senha() -> None:
-    """Verifica se senha incorreta retorna 400 com mensagem segura e sem vazar a senha enviada."""
     pdf_base = _criar_pdf_exemplo(total_paginas=1)
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_base), "application/pdf")}
     res_prot = client.post(
@@ -135,7 +125,6 @@ def test_senha_incorreta_sem_vazar_senha() -> None:
 
 
 def test_pagina_inexistente_retorna_400() -> None:
-    """Verifica se páginas fora do documento retornam erro 400 claro em JSON."""
     pdf_base = _criar_pdf_exemplo(total_paginas=2)
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_base), "application/pdf")}
     response = client.post("/api/paginas/extrair", files=files, data={"paginas": "99"})
@@ -146,7 +135,6 @@ def test_pagina_inexistente_retorna_400() -> None:
 
 
 def test_erro_inesperado_retorna_500_generico(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verifica se falha imprevista retorna 500 com formato genérico e sem stack trace."""
     app_module = sys.modules["perfectdf.web.app"]
     client_safe = TestClient(app, raise_server_exceptions=False)
 
@@ -168,7 +156,6 @@ def test_erro_inesperado_retorna_500_generico(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_request_validation_error_422() -> None:
-    """Verifica se parâmetros faltando retornam 422 em português no formato {'erro': ...}."""
     response = client.post("/api/paginas/girar")
     assert response.status_code == 422
     assert response.json() == {
@@ -177,10 +164,8 @@ def test_request_validation_error_422() -> None:
 
 
 def test_rota_paginas_extrair_e_excluir() -> None:
-    """Testa endpoints de extrair e excluir páginas."""
     pdf_bytes = _criar_pdf_exemplo(total_paginas=4)
 
-    # Extrair
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
     res_ext = client.post("/api/paginas/extrair", files=files, data={"paginas": "1,3"})
     assert res_ext.status_code == 200
@@ -188,7 +173,6 @@ def test_rota_paginas_extrair_e_excluir() -> None:
     assert len(doc_ext) == 2
     doc_ext.close()
 
-    # Excluir
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
     res_del = client.post("/api/paginas/excluir", files=files, data={"paginas": "1"})
     assert res_del.status_code == 200
@@ -198,7 +182,6 @@ def test_rota_paginas_extrair_e_excluir() -> None:
 
 
 def test_rota_paginas_juntar() -> None:
-    """Testa rota de unificação de múltiplos PDFs."""
     pdf1 = _criar_pdf_exemplo(total_paginas=1)
     pdf2 = _criar_pdf_exemplo(total_paginas=2)
 
@@ -214,36 +197,29 @@ def test_rota_paginas_juntar() -> None:
 
 
 def test_rota_anotacoes() -> None:
-    """Testa marca d'água, numeração e nota."""
     pdf_bytes = _criar_pdf_exemplo(total_paginas=2)
 
-    # Marca d'água
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
     res_marca = client.post("/api/anotacoes/marca-dagua", files=files, data={"texto": "CONFIDENCIAL"})
     assert res_marca.status_code == 200
 
-    # Numeração
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
     res_num = client.post("/api/anotacoes/numerar", files=files, data={"formato": "Pág {n}"})
     assert res_num.status_code == 200
 
-    # Adicionar Nota
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
     res_nota = client.post("/api/anotacoes/nota", files=files, data={"pagina": "1", "texto": "Nota teste"})
     assert res_nota.status_code == 200
 
 
 def test_rota_texto_e_metadados() -> None:
-    """Testa extração de texto, adição de texto e edição de metadados."""
     pdf_bytes = _criar_pdf_exemplo(total_paginas=1)
 
-    # Extrair texto
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
     res_txt = client.post("/api/texto/extrair", files=files)
     assert res_txt.status_code == 200
     assert "Página de teste 1" in res_txt.json()["texto"]
 
-    # Adicionar texto
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
     res_add = client.post(
         "/api/texto/adicionar",
@@ -255,7 +231,6 @@ def test_rota_texto_e_metadados() -> None:
     assert "Novo Texto Inserido" in doc_add[0].get_text()
     doc_add.close()
 
-    # Editar metadados
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
     res_meta = client.post(
         "/api/metadados/editar",
@@ -270,10 +245,8 @@ def test_rota_texto_e_metadados() -> None:
 
 
 def test_rota_seguranca_proteger_e_desproteger() -> None:
-    """Testa proteger com senha e remover senha."""
     pdf_bytes = _criar_pdf_exemplo(total_paginas=1)
 
-    # Proteger
     files = {"arquivo": ("doc.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
     res_prot = client.post(
         "/api/seguranca/proteger",
@@ -282,14 +255,13 @@ def test_rota_seguranca_proteger_e_desproteger() -> None:
     )
     assert res_prot.status_code == 200
 
-    # Tenta abrir com pymupdf sem senha (deve indicar criptografado)
+    # Confirma a criptografia antes de testar a remoção da senha.
     doc_enc = pymupdf.open(stream=res_prot.content, filetype="pdf")
     assert doc_enc.is_encrypted
     assert not doc_enc.authenticate("errada")
     assert doc_enc.authenticate("senha123")
     doc_enc.close()
 
-    # Remover senha
     files_rem = {"arquivo": ("prot.pdf", io.BytesIO(res_prot.content), "application/pdf")}
     res_rem = client.post(
         "/api/seguranca/remover-senha",
