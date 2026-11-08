@@ -15,6 +15,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnRemoveFile = document.getElementById("btn-remove-file");
   const actionsPanel = document.getElementById("actions-panel");
   const btnExecutar = document.getElementById("btn-executar-acao");
+  const btnBaixarPrevia = document.getElementById("btn-baixar-previa");
+  const btnMostrarOriginal = document.getElementById("btn-mostrar-original");
+  const btnMostrarPrevia = document.getElementById("btn-mostrar-previa");
+  const estadoVisualizacao = document.getElementById("estado-visualizacao");
+  const avisoPreviaDesatualizada = document.getElementById("aviso-previa-desatualizada");
+  const compressionSizeStatus = document.getElementById("compression-size-status");
+  const compressionSizeDetail = document.getElementById("compression-size-detail");
   const inputMultiplosPdfs = document.getElementById("input-multiplos-pdfs");
   const listaArquivosJuntar = document.getElementById("lista-arquivos-juntar");
   const viewerWorkspace = document.querySelector(".viewer-workspace");
@@ -43,6 +50,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Estado
   let currentFile = null;
+  let originalFile = null;
+  let previewBlob = null;
+  let previewDownloadName = "";
+  let previewToolKey = "";
+  let previewIsStale = false;
+  let previewIsGenerating = false;
+  let previewChangedDuringRequest = false;
+  let previewRequestId = 0;
+  let currentViewMode = "none";
   let currentPdfDoc = null;
   let currentPageNum = 1;
   let currentScale = 1.0;
@@ -107,6 +123,154 @@ document.addEventListener("DOMContentLoaded", () => {
     const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  }
+
+  function getActiveOperationKey() {
+    const selectors = {
+      "tab-paginas": "select-sub-paginas",
+      "tab-anotacoes": "select-sub-anotacoes",
+      "tab-formularios": "select-sub-formularios",
+      "tab-texto": "select-sub-texto",
+      "tab-seguranca": "select-sub-seguranca",
+    };
+    const selectorId = selectors[activeTabId];
+    const selection = selectorId ? document.getElementById(selectorId)?.value || "" : "";
+    return `${activeTabId}:${selection}`;
+  }
+
+  function isPreviewOperation() {
+    if (activeTabId === "tab-paginas" || activeTabId === "tab-anotacoes") return true;
+    if (activeTabId === "tab-formularios") {
+      return ["preencher", "achatar"].includes(document.getElementById("select-sub-formularios")?.value);
+    }
+    if (activeTabId === "tab-texto") {
+      return ["adicionar-texto", "editar-metadados"].includes(document.getElementById("select-sub-texto")?.value);
+    }
+    return activeTabId === "tab-seguranca"
+      && document.getElementById("select-sub-seguranca")?.value === "comprimir";
+  }
+
+  function updatePreviewControls() {
+    const hasOriginal = Boolean(originalFile);
+    const hasPreview = Boolean(previewBlob);
+    if (btnMostrarOriginal) {
+      btnMostrarOriginal.disabled = !hasOriginal;
+      btnMostrarOriginal.classList.toggle("active", currentViewMode === "original");
+      btnMostrarOriginal.setAttribute("aria-pressed", String(currentViewMode === "original"));
+    }
+    if (btnMostrarPrevia) {
+      btnMostrarPrevia.disabled = !hasPreview;
+      btnMostrarPrevia.classList.toggle("active", currentViewMode === "preview");
+      btnMostrarPrevia.setAttribute("aria-pressed", String(currentViewMode === "preview"));
+    }
+    if (btnBaixarPrevia) btnBaixarPrevia.disabled = !hasPreview;
+    if (estadoVisualizacao) {
+      if (currentViewMode === "preview") {
+        estadoVisualizacao.textContent = previewIsStale
+          ? "Mostrando prévia desatualizada"
+          : "Mostrando prévia";
+      } else if (currentViewMode === "original") {
+        estadoVisualizacao.textContent = "Mostrando original";
+      } else if (currentViewMode === "result") {
+        estadoVisualizacao.textContent = "Mostrando resultado";
+      } else {
+        estadoVisualizacao.textContent = "Nenhum documento aberto";
+      }
+    }
+    if (avisoPreviaDesatualizada) {
+      avisoPreviaDesatualizada.classList.toggle("hidden", !previewIsStale);
+    }
+  }
+
+  function updatePrimaryAction() {
+    if (!btnExecutar) return;
+    if (previewIsGenerating) {
+      btnExecutar.disabled = true;
+      btnExecutar.textContent = "Gerando...";
+      return;
+    }
+    btnExecutar.textContent = isPreviewOperation() ? "Pré-visualizar" : "Aplicar";
+    btnExecutar.disabled = activeTabId === "tab-juntar" && joinFiles.length < 2;
+  }
+
+  function downloadBlob(blob, filename) {
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    link.remove();
+  }
+
+  function discardPreview(restoreOriginal = true) {
+    const shouldRestoreOriginal = restoreOriginal
+      && currentViewMode === "preview"
+      && Boolean(originalFile);
+    previewRequestId += 1;
+    previewBlob = null;
+    previewDownloadName = "";
+    previewToolKey = "";
+    previewIsStale = false;
+    previewIsGenerating = false;
+    previewChangedDuringRequest = false;
+    if (compressionSizeStatus) compressionSizeStatus.classList.add("hidden");
+    if (currentViewMode === "preview") currentViewMode = originalFile ? "original" : "none";
+    updatePreviewControls();
+    updatePrimaryAction();
+    if (shouldRestoreOriginal) showOriginalDocument();
+  }
+
+  async function showOriginalDocument() {
+    if (!originalFile) return;
+    const loaded = await loadPdfInViewer(await originalFile.arrayBuffer());
+    if (!loaded) return;
+    currentViewMode = "original";
+    updatePreviewControls();
+  }
+
+  async function showPreviewDocument() {
+    if (!previewBlob) return;
+    const loaded = await loadPdfInViewer(await previewBlob.arrayBuffer());
+    if (!loaded) return;
+    currentViewMode = "preview";
+    updatePreviewControls();
+  }
+
+  function handleToolFieldChange(event) {
+    const operationSelectors = new Set([
+      "select-sub-paginas",
+      "select-sub-anotacoes",
+      "select-sub-formularios",
+      "select-sub-texto",
+      "select-sub-seguranca",
+    ]);
+    if (operationSelectors.has(event.target.id)) {
+      const newKey = getActiveOperationKey();
+      if ((previewBlob && newKey !== previewToolKey)
+        || (previewIsGenerating && newKey !== previewToolKey)) {
+        discardPreview();
+      }
+    } else {
+      if (previewBlob) previewIsStale = true;
+      if (previewIsGenerating) previewChangedDuringRequest = true;
+      updatePreviewControls();
+    }
+    updatePrimaryAction();
+  }
+
+  tabPanes.forEach((pane) => {
+    pane.addEventListener("input", handleToolFieldChange);
+    pane.addEventListener("change", handleToolFieldChange);
+  });
+
+  if (btnMostrarOriginal) btnMostrarOriginal.addEventListener("click", showOriginalDocument);
+  if (btnMostrarPrevia) btnMostrarPrevia.addEventListener("click", showPreviewDocument);
+  if (btnBaixarPrevia) {
+    btnBaixarPrevia.addEventListener("click", () => {
+      if (previewBlob) downloadBlob(previewBlob, previewDownloadName || "previa.pdf");
+    });
   }
 
   function updateJoinActionState() {
@@ -230,6 +394,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Controle de Abas
   tabBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
+      const previousTabId = activeTabId;
       tabBtns.forEach((b) => b.classList.remove("active"));
       tabPanes.forEach((p) => p.classList.remove("active"));
 
@@ -237,6 +402,8 @@ document.addEventListener("DOMContentLoaded", () => {
       activeTabId = btn.getAttribute("data-tab");
       const targetPane = document.getElementById(activeTabId);
       if (targetPane) targetPane.classList.add("active");
+
+      if (previousTabId !== activeTabId) discardPreview();
 
       if (actionsPanel) {
         if (currentFile || activeTabId === "tab-juntar") {
@@ -246,6 +413,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
       updateDropZoneForActiveTab();
+      updatePrimaryAction();
       updateJoinActionState();
     });
   });
@@ -327,7 +495,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Funções do Visualizador PDF (pdf.js)
   async function loadPdfInViewer(arrayBuffer) {
-    if (!window.pdfjsLib) return;
+    if (!window.pdfjsLib) return false;
     try {
       const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
       currentPdfDoc = await loadingTask.promise;
@@ -342,9 +510,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (viewerSection) viewerSection.classList.remove("hidden");
 
       renderPage(currentPageNum);
+      return true;
     } catch (err) {
       console.error("Erro ao carregar visualizador:", err);
       showFeedback(`Não foi possível exibir o PDF: ${err.message}`, "error");
+      return false;
     }
   }
 
@@ -415,7 +585,11 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    discardPreview(false);
     currentFile = file;
+    originalFile = file;
+    currentViewMode = "original";
+    updatePreviewControls();
     clearFeedback();
     hideTextResult();
 
@@ -458,7 +632,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function resetFile() {
     currentFile = null;
+    originalFile = null;
     currentPdfDoc = null;
+    discardPreview(false);
+    currentViewMode = "none";
+    updatePreviewControls();
     if (fileInput) fileInput.value = "";
     if (fileInfoCard) fileInfoCard.classList.add("hidden");
     if (actionsPanel) actionsPanel.classList.toggle("hidden", activeTabId !== "tab-juntar");
@@ -602,14 +780,20 @@ document.addEventListener("DOMContentLoaded", () => {
     await loadPdfInViewer(processedBuffer);
 
     if (activeTabId === "tab-juntar") {
+      discardPreview(false);
       currentFile = new File([blob], downloadName, { type: blob.type || "application/pdf" });
+      originalFile = currentFile;
+      currentViewMode = "original";
       if (fileInfoCard) fileInfoCard.classList.remove("hidden");
       if (fileName) fileName.textContent = downloadName;
       if (fileMeta) fileMeta.textContent = currentPdfDoc
         ? `Resultado da junção | Páginas: ${currentPdfDoc.numPages}`
         : "Resultado da junção";
       if (actionsPanel) actionsPanel.classList.remove("hidden");
+    } else {
+      currentViewMode = "result";
     }
+    updatePreviewControls();
 
     // Dispara download
     const downloadUrl = window.URL.createObjectURL(blob);
@@ -674,9 +858,20 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      btnExecutar.disabled = true;
-      btnExecutar.textContent = "Processando...";
-      showFeedback("Processando arquivo PDF com PerfectDF...", "info");
+      const previewMode = isPreviewOperation();
+      const operationKey = getActiveOperationKey();
+      const requestId = previewMode ? ++previewRequestId : null;
+      if (previewMode) {
+        previewIsGenerating = true;
+        previewChangedDuringRequest = false;
+        previewToolKey = operationKey;
+        updatePrimaryAction();
+        showFeedback("Gerando prévia...", "info");
+      } else {
+        btnExecutar.disabled = true;
+        btnExecutar.textContent = "Processando...";
+        showFeedback("Processando arquivo PDF com PerfectDF...", "info");
+      }
 
       const formData = new FormData();
       formData.append("arquivo", currentFile);
@@ -779,14 +974,50 @@ document.addEventListener("DOMContentLoaded", () => {
             showTextResult(`Campos Encontrados (${jsonRes.total})`, JSON.stringify(jsonRes.campos, null, 2));
           }
           showFeedback("Consulta realizada com sucesso!", "success");
+        } else if (previewMode) {
+          if (requestId !== previewRequestId) return;
+          const blob = await response.blob();
+          const disposition = response.headers.get("Content-Disposition");
+          const filenameMatch = disposition?.match(/filename="?([^";]+)"?/);
+          previewDownloadName = filenameMatch?.[1] || `processado_${currentFile.name}`;
+          const loaded = await loadPdfInViewer(await blob.arrayBuffer());
+          if (requestId !== previewRequestId) {
+            if (originalFile) await showOriginalDocument();
+            return;
+          }
+          if (!loaded) throw new Error("Não foi possível abrir a prévia do PDF.");
+
+          previewBlob = blob;
+          previewToolKey = operationKey;
+          previewIsStale = previewChangedDuringRequest;
+          currentViewMode = "preview";
+          updatePreviewControls();
+          if (activeTabId === "tab-seguranca" && selectSubSeg?.value === "comprimir") {
+            if (compressionSizeDetail && originalFile) {
+              compressionSizeDetail.textContent = `${formatBytes(originalFile.size)} antes · ${formatBytes(blob.size)} depois`;
+            }
+            compressionSizeStatus?.classList.remove("hidden");
+          } else {
+            compressionSizeStatus?.classList.add("hidden");
+          }
+          showFeedback(previewIsStale
+            ? "Prévia pronta, mas campos foram alterados durante a geração."
+            : "Prévia pronta. Revise antes de baixar.", "success");
         } else {
           await handlePdfDownloadResponse(response, `processado_${currentFile.name}`);
         }
       } catch (err) {
         showFeedback(`Erro ao processar: ${err.message}`, "error");
       } finally {
-        btnExecutar.disabled = false;
-        btnExecutar.textContent = "Executar Operação";
+        if (previewMode) {
+          if (requestId === previewRequestId) {
+            previewIsGenerating = false;
+            updatePrimaryAction();
+          }
+        } else {
+          btnExecutar.disabled = false;
+          btnExecutar.textContent = "Aplicar";
+        }
       }
     });
   }

@@ -229,7 +229,8 @@
 
         <!-- Botão Principal de Ação -->
         <div class="action-buttons">
-          <button id="btn-executar-acao" class="btn btn-success">Aplicar</button>
+          <button id="btn-executar-acao" class="btn btn-success">Pré-visualizar</button>
+          <button id="btn-baixar-previa" class="btn btn-download" type="button" disabled>Baixar</button>
         </div>
       </div>
     </section>
@@ -257,7 +258,17 @@
       </div>
         </div>
         <section class="viewer-stage" aria-label="Pré-visualização do PDF">
-          <div class="viewer-stage-heading"><h2>Documento</h2><span>Visualizador PDF.js</span></div>
+          <div class="viewer-stage-heading">
+            <h2>Documento</h2>
+            <div class="preview-view-tools" aria-label="Visualização do documento">
+              <div class="preview-switch" role="group" aria-label="Comparar documento">
+                <button id="btn-mostrar-original" class="preview-switch-button active" type="button" aria-pressed="true" disabled>Original</button>
+                <button id="btn-mostrar-previa" class="preview-switch-button" type="button" aria-pressed="false" disabled>Prévia</button>
+              </div>
+              <span id="estado-visualizacao">Nenhum documento aberto</span>
+            </div>
+          </div>
+          <p id="aviso-previa-desatualizada" class="preview-stale-note hidden" role="status">Campos alterados. Gere uma nova prévia para incluir as mudanças.</p>
     <section id="viewer-section" class="viewer-section hidden">
       <div class="viewer-toolbar">
         <div class="toolbar-group">
@@ -298,6 +309,7 @@
         <div class="status-item"><span class="status-label">Arquivo</span><span id="footer-file">Nenhum arquivo</span></div>
         <div class="status-item"><span class="status-label">Páginas</span><span id="footer-pages">—</span></div>
         <div class="status-item"><span class="status-label">Última operação</span><span id="footer-operation">Aguardando</span></div>
+        <div id="compression-size-status" class="status-item hidden"><span class="status-label">Compressão</span><span id="compression-size-detail"></span></div>
         <div class="status-item status-errors"><span class="status-label">Erros</span><span id="footer-errors">Nenhum</span></div>
       </footer>
   </div>

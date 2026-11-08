@@ -153,7 +153,7 @@ button, select { -webkit-tap-highlight-color: transparent; }
 .input-control:focus { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .input-control::placeholder { color: var(--text-faint); }
 textarea.input-control { min-height: 54px; resize: vertical; }
-.action-buttons { flex: 0 0 auto; }
+.action-buttons { display: flex; flex: 0 0 auto; gap: 7px; }
 .btn {
   display: inline-flex;
   min-height: 36px;
@@ -176,6 +176,9 @@ textarea.input-control { min-height: 54px; resize: vertical; }
 .btn-success:disabled { opacity: 0.72; cursor: wait; }
 .btn-success:disabled::before { width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; content: ""; animation: busy 700ms linear infinite; }
 @keyframes busy { to { transform: rotate(360deg); } }
+.btn-download { min-width: 78px; border-color: var(--accent); color: var(--accent); font-family: var(--font-control); font-size: var(--size-xs); }
+.btn-download:hover:not(:disabled) { background: rgba(0, 192, 252, 0.1); }
+.btn-download:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-tool { min-width: 32px; min-height: 31px; padding: 4px 8px; font-family: var(--font-control); }
 .btn-tool svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .btn-text { border: 0; background: transparent; color: var(--text-muted); font-size: 1.3rem; }
@@ -195,6 +198,14 @@ textarea.input-control { min-height: 54px; resize: vertical; }
 .viewer-stage-heading { display: flex; min-height: 31px; align-items: flex-start; justify-content: space-between; }
 .viewer-stage-heading h2 { margin: 0; font-size: var(--size-sm); font-weight: 500; }
 .viewer-stage-heading span { color: var(--text-faint); font: 400 0.65rem var(--font-control); }
+.preview-view-tools { display: flex; align-items: center; gap: 9px; }
+.preview-view-tools > span { color: var(--text-muted); font: 400 0.67rem var(--font-control); }
+.preview-switch { display: inline-flex; padding: 2px; border: 1px solid var(--line); background: var(--surface); }
+.preview-switch-button { min-height: 25px; padding: 3px 9px; border: 0; border-radius: 1px; background: transparent; color: var(--text-muted); font: 400 0.68rem var(--font-control); cursor: pointer; }
+.preview-switch-button:hover:not(:disabled) { color: var(--text); }
+.preview-switch-button.active { background: var(--surface-raised); color: var(--accent); }
+.preview-switch-button:disabled { opacity: 0.4; cursor: not-allowed; }
+.preview-stale-note { align-self: flex-end; margin: -3px 0 6px; color: var(--text-muted); font-size: 0.72rem; }
 .viewer-section { min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); background: var(--surface-inset); }
 .viewer-toolbar { display: flex; min-height: 43px; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 9px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .toolbar-group { display: flex; align-items: center; gap: 5px; }
@@ -241,6 +252,7 @@ textarea.input-control { min-height: 54px; resize: vertical; }
 .status-item:last-child { border-right: 0; }
 .status-label { color: var(--text-faint); font: 400 0.65rem var(--font-control); white-space: nowrap; }
 .status-errors span:last-child { color: var(--success); }
+#compression-size-detail { color: var(--accent); font-family: var(--font-control); font-size: 0.68rem; white-space: nowrap; }
 .hidden { display: none !important; }
 body:has(#file-info-card.hidden) #actions-panel.hidden { display: flex !important; opacity: 0.48; pointer-events: none; }
 body:has(#file-info-card.hidden) #actions-panel.hidden .tab-pane.active { display: flex; }
@@ -305,6 +317,10 @@ body:has(#file-info-card.hidden) .viewer-stage-heading { display: none; }
   .viewer-empty-state { padding: 10px; }
   .drop-zone { min-height: min(390px, 62vh); padding: 25px 16px; }
   .viewer-toolbar { align-items: flex-start; flex-direction: column; }
+  .viewer-stage-heading { min-height: 38px; flex-wrap: wrap; gap: 5px; }
+  .preview-view-tools { max-width: 100%; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+  .preview-view-tools > span { font-size: 0.6rem; }
+  .preview-switch-button { padding-inline: 6px; }
   .canvas-container { padding: 10px; }
   .app-footer { min-height: 0; flex-wrap: wrap; padding: 6px 9px; }
   .status-item { min-height: 26px; padding-inline: 7px; font-size: 0.67rem; }
