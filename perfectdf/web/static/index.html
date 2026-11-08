@@ -219,11 +219,12 @@
 
         <!-- Aba Juntar PDFs -->
         <div id="tab-juntar" class="tab-pane">
-          <p class="tab-info">Selecione múltiplos arquivos PDF para combiná-los em um único documento:</p>
+          <p class="tab-info">A lista define a ordem das páginas no PDF final.</p>
           <div class="form-row">
+            <label for="input-multiplos-pdfs">Adicionar arquivos PDF</label>
             <input type="file" id="input-multiplos-pdfs" accept="application/pdf,.pdf" multiple class="input-control">
           </div>
-          <div id="lista-arquivos-juntar" class="files-preview-list"></div>
+          <div id="lista-arquivos-juntar" class="files-preview-list" aria-live="polite"></div>
         </div>
 
         <!-- Botão Principal de Ação -->

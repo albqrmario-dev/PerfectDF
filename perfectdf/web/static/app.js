@@ -15,6 +15,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnRemoveFile = document.getElementById("btn-remove-file");
   const actionsPanel = document.getElementById("actions-panel");
   const btnExecutar = document.getElementById("btn-executar-acao");
+  const inputMultiplosPdfs = document.getElementById("input-multiplos-pdfs");
+  const listaArquivosJuntar = document.getElementById("lista-arquivos-juntar");
+  const viewerWorkspace = document.querySelector(".viewer-workspace");
   const feedbackMessage = document.getElementById("feedback-message");
   const textResultBox = document.getElementById("text-result-box");
   const textResultTitle = document.getElementById("text-result-title");
@@ -47,6 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let isRendering = false;
   let pendingPageNum = null;
   let currentRenderTask = null;
+  let joinFiles = [];
 
   // 1. Verificação de status da API
   fetch("/api/ping")
@@ -105,6 +109,124 @@ document.addEventListener("DOMContentLoaded", () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   }
 
+  function updateJoinActionState() {
+    if (!btnExecutar || btnExecutar.textContent === "Processando...") return;
+    btnExecutar.disabled = activeTabId === "tab-juntar" && joinFiles.length < 2;
+  }
+
+  function renderJoinFiles() {
+    if (!listaArquivosJuntar) return;
+    listaArquivosJuntar.replaceChildren();
+
+    if (joinFiles.length === 0) {
+      const hint = document.createElement("p");
+      hint.className = "join-files-hint";
+      hint.textContent = "Selecione ao menos dois PDFs para habilitar Aplicar.";
+      listaArquivosJuntar.appendChild(hint);
+      updateJoinActionState();
+      return;
+    }
+
+    const hint = document.createElement("p");
+    hint.className = "join-files-hint";
+    hint.textContent = joinFiles.length < 2
+      ? "Adicione mais um PDF para continuar."
+      : `${joinFiles.length} PDFs na ordem de junção.`;
+    listaArquivosJuntar.appendChild(hint);
+
+    joinFiles.forEach((file, index) => {
+      const row = document.createElement("div");
+      row.className = "join-file-item";
+
+      const detail = document.createElement("div");
+      detail.className = "join-file-detail";
+      const name = document.createElement("span");
+      name.className = "join-file-name";
+      name.textContent = file.name;
+      const size = document.createElement("span");
+      size.className = "join-file-size";
+      size.textContent = formatBytes(file.size);
+      detail.append(name, size);
+
+      const controls = document.createElement("div");
+      controls.className = "join-file-controls";
+      const moveUp = document.createElement("button");
+      moveUp.type = "button";
+      moveUp.className = "btn btn-tool join-order-button";
+      moveUp.title = "Subir arquivo";
+      moveUp.setAttribute("aria-label", `Mover ${file.name} para cima`);
+      moveUp.disabled = index === 0;
+      moveUp.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>';
+      moveUp.addEventListener("click", () => moveJoinFile(index, -1));
+
+      const moveDown = document.createElement("button");
+      moveDown.type = "button";
+      moveDown.className = "btn btn-tool join-order-button";
+      moveDown.title = "Descer arquivo";
+      moveDown.setAttribute("aria-label", `Mover ${file.name} para baixo`);
+      moveDown.disabled = index === joinFiles.length - 1;
+      moveDown.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+      moveDown.addEventListener("click", () => moveJoinFile(index, 1));
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn btn-text join-remove-button";
+      remove.title = "Remover arquivo";
+      remove.setAttribute("aria-label", `Remover ${file.name}`);
+      remove.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg>';
+      remove.addEventListener("click", () => removeJoinFile(index));
+
+      controls.append(moveUp, moveDown, remove);
+      row.append(detail, controls);
+      listaArquivosJuntar.appendChild(row);
+    });
+
+    updateJoinActionState();
+  }
+
+  function addJoinFiles(files) {
+    const candidates = Array.from(files || []);
+    const validFiles = candidates.filter((file) => file.name.toLowerCase().endsWith(".pdf"));
+    const invalidFiles = candidates.filter((file) => !file.name.toLowerCase().endsWith(".pdf"));
+
+    if (validFiles.length > 0) joinFiles.push(...validFiles);
+    if (invalidFiles.length > 0) {
+      const names = invalidFiles.map((file) => file.name).join(", ");
+      showFeedback(`Apenas arquivos .pdf podem ser juntados. Ignorados: ${names}.`, "error");
+    } else if (validFiles.length > 0) {
+      clearFeedback();
+    }
+    renderJoinFiles();
+  }
+
+  function moveJoinFile(index, direction) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= joinFiles.length) return;
+    [joinFiles[index], joinFiles[targetIndex]] = [joinFiles[targetIndex], joinFiles[index]];
+    renderJoinFiles();
+  }
+
+  function removeJoinFile(index) {
+    joinFiles.splice(index, 1);
+    renderJoinFiles();
+  }
+
+  function updateDropZoneForActiveTab() {
+    if (!dropZone) return;
+    const heading = dropZone.querySelector("h3");
+    const hint = dropZone.querySelector("p");
+    const singleFileLabel = dropZone.querySelector('label[for="file-input"]');
+    if (activeTabId === "tab-juntar") {
+      if (heading) heading.textContent = "Solte vários PDFs para juntar";
+      if (hint) hint.textContent = "Ou use o seletor múltiplo na faixa de ferramentas.";
+      singleFileLabel?.classList.add("hidden");
+    } else {
+      if (heading) heading.textContent = "Arraste e solte seu arquivo PDF aqui";
+      if (hint) hint.textContent = "ou clique no botão abaixo para selecionar";
+      singleFileLabel?.classList.remove("hidden");
+    }
+  }
+
   // Controle de Abas
   tabBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -115,8 +237,26 @@ document.addEventListener("DOMContentLoaded", () => {
       activeTabId = btn.getAttribute("data-tab");
       const targetPane = document.getElementById(activeTabId);
       if (targetPane) targetPane.classList.add("active");
+
+      if (actionsPanel) {
+        if (currentFile || activeTabId === "tab-juntar") {
+          actionsPanel.classList.remove("hidden");
+        } else {
+          actionsPanel.classList.add("hidden");
+        }
+      }
+      updateDropZoneForActiveTab();
+      updateJoinActionState();
     });
   });
+
+  if (inputMultiplosPdfs) {
+    inputMultiplosPdfs.addEventListener("change", () => {
+      addJoinFiles(inputMultiplosPdfs.files);
+      inputMultiplosPdfs.value = "";
+    });
+  }
+  renderJoinFiles();
 
   // Controles dinâmicos de sub-opções
   // Páginas
@@ -321,7 +461,7 @@ document.addEventListener("DOMContentLoaded", () => {
     currentPdfDoc = null;
     if (fileInput) fileInput.value = "";
     if (fileInfoCard) fileInfoCard.classList.add("hidden");
-    if (actionsPanel) actionsPanel.classList.add("hidden");
+    if (actionsPanel) actionsPanel.classList.toggle("hidden", activeTabId !== "tab-juntar");
     if (viewerSection) viewerSection.classList.add("hidden");
     clearFeedback();
     hideTextResult();
@@ -348,8 +488,32 @@ document.addEventListener("DOMContentLoaded", () => {
     dropZone.addEventListener("drop", (e) => {
       const files = e.dataTransfer?.files;
       if (files && files.length > 0) {
-        handleFile(files[0]);
+        if (activeTabId === "tab-juntar") {
+          addJoinFiles(files);
+        } else {
+          handleFile(files[0]);
+        }
       }
+    });
+  }
+
+  if (viewerWorkspace) {
+    ["dragenter", "dragover"].forEach((eventName) => {
+      viewerWorkspace.addEventListener(eventName, (e) => {
+        if (activeTabId !== "tab-juntar") return;
+        e.preventDefault();
+        viewerWorkspace.classList.add("join-dragover");
+      });
+    });
+    ["dragleave", "drop"].forEach((eventName) => {
+      viewerWorkspace.addEventListener(eventName, (e) => {
+        if (activeTabId !== "tab-juntar") return;
+        viewerWorkspace.classList.remove("join-dragover");
+        if (eventName === "drop") {
+          e.preventDefault();
+          addJoinFiles(e.dataTransfer?.files);
+        }
+      });
     });
   }
 
@@ -437,6 +601,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const processedBuffer = await blob.arrayBuffer();
     await loadPdfInViewer(processedBuffer);
 
+    if (activeTabId === "tab-juntar") {
+      currentFile = new File([blob], downloadName, { type: blob.type || "application/pdf" });
+      if (fileInfoCard) fileInfoCard.classList.remove("hidden");
+      if (fileName) fileName.textContent = downloadName;
+      if (fileMeta) fileMeta.textContent = currentPdfDoc
+        ? `Resultado da junção | Páginas: ${currentPdfDoc.numPages}`
+        : "Resultado da junção";
+      if (actionsPanel) actionsPanel.classList.remove("hidden");
+    }
+
     // Dispara download
     const downloadUrl = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -455,10 +629,14 @@ document.addEventListener("DOMContentLoaded", () => {
     btnExecutar.addEventListener("click", async () => {
       // Caso especial: Juntar PDFs
       if (activeTabId === "tab-juntar") {
-        const inputMulti = document.getElementById("input-multiplos-pdfs");
-        const files = inputMulti?.files;
-        if (!files || files.length < 2) {
+        const files = joinFiles;
+        if (files.length < 2) {
           showFeedback("Selecione pelo menos 2 arquivos PDF para juntar.", "error");
+          return;
+        }
+        const invalidFiles = files.filter((file) => !file.name.toLowerCase().endsWith(".pdf"));
+        if (invalidFiles.length > 0) {
+          showFeedback("Apenas arquivos com extensão .pdf podem ser juntados.", "error");
           return;
         }
 
@@ -467,9 +645,7 @@ document.addEventListener("DOMContentLoaded", () => {
         showFeedback("Juntando arquivos PDF...", "info");
 
         const formData = new FormData();
-        for (let i = 0; i < files.length; i++) {
-          formData.append("arquivos", files[i]);
-        }
+        files.forEach((file) => formData.append("arquivos", file));
 
         try {
           const res = await fetch("/api/paginas/juntar", {
@@ -486,8 +662,8 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch (e) {
           showFeedback(`Falha ao juntar PDFs: ${e.message}`, "error");
         } finally {
-          btnExecutar.disabled = false;
-          btnExecutar.textContent = "Executar Operação";
+          btnExecutar.disabled = activeTabId === "tab-juntar" && joinFiles.length < 2;
+          btnExecutar.textContent = "Aplicar";
         }
         return;
       }
