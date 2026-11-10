@@ -10,7 +10,7 @@ Recomenda-se o uso de um ambiente virtual (`venv`):
 
 ```bash
 # Clone o repositório
-git clone https://github.com/seu-usuario/perfectdf.git
+git clone https://github.com/albrqmario-dev/perfectdf.git
 cd perfectdf
 
 # Crie e ative o ambiente virtual
