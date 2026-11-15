@@ -50,6 +50,18 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+# Optional Python hosting exposes the same license/source downloads as the static site.
+PROJECT_DIR = Path(__file__).resolve().parents[2]
+for resource_name in ("sources", "licenses"):
+    resource_dir = PROJECT_DIR / "dist" / resource_name
+    if resource_dir.is_dir():
+        app.mount(f"/{resource_name}", StaticFiles(directory=resource_dir), name=resource_name)
+
+
+@app.get("/LICENSE", include_in_schema=False)
+def project_license() -> FileResponse:
+    return FileResponse(PROJECT_DIR / "LICENSE", media_type="text/plain")
+
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:

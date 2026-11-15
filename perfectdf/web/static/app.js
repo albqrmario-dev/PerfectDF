@@ -1,6 +1,6 @@
-document.addEventListener("DOMContentLoaded", () => {
+const initializePerfectDF = () => {
   if (window.pdfjsLib) {
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.js";
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.mjs";
   }
 
   const badge = document.getElementById("api-status-badge");
@@ -49,6 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let previewBlob = null;
   let previewDownloadName = "";
   let previewToolKey = "";
+  let editRevision = 0, previewRevision = -1, previewSource = null;
   let previewIsStale = false;
   let previewIsGenerating = false;
   let previewChangedDuringRequest = false;
@@ -61,32 +62,33 @@ document.addEventListener("DOMContentLoaded", () => {
   let isRendering = false;
   let pendingPageNum = null;
   let currentRenderTask = null;
+  let viewerLoadingTask = null, viewerGeneration = 0, documentGeneration = 0, viewSelection = 0;
+  let viewerDisposal = Promise.resolve();
+  let activeJob = null;
   let joinFiles = [];
+  let formEditorReady = false;
+  let editableFile = null, editableInfo = null, editablePageNumber = 0, selectedTextLine = null, textLoadRequest = 0;
+  const textDrafts = new Map();
+  const signatureEditor = window.createSignatureEditor({
+    active: () => getActiveOperationKey() === 'tab-anotacoes:assinatura',
+    original: () => currentViewMode === 'original', pageNumber: () => currentPageNum,
+    goPage: async page => { while (isRendering) await new Promise(resolve => setTimeout(resolve, 16)); currentPageNum = page; await renderPage(page); },
+    showOriginal: showOriginalDocument,
+    changed: () => handleToolFieldChange({ target: document.getElementById('signature-layer') }),
+    error: message => showFeedback(message, 'error'), ready: updatePrimaryAction,
+  });
 
-  fetch("/api/ping")
-    .then((res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    })
-    .then(() => {
-      if (badge) {
-        badge.textContent = "Online";
-        badge.classList.remove("offline");
-        badge.classList.add("online");
-      }
-    })
-    .catch(() => {
-      if (badge) {
-        badge.textContent = "Offline";
-        badge.classList.remove("online");
-        badge.classList.add("offline");
-      }
-    });
+  if (badge) {
+    badge.textContent = "Processamento local";
+    badge.classList.add("online");
+    badge.title = "Seus PDFs são processados neste dispositivo, sem upload.";
+  }
 
   function showFeedback(text, type = "info") {
     if (!feedbackMessage) return;
     feedbackMessage.textContent = text;
     feedbackMessage.className = `feedback-message ${type}`;
+    if (type === 'success') document.getElementById('footer-operation').textContent = document.getElementById('active-tool-title').textContent;
   }
 
   function clearFeedback() {
@@ -137,13 +139,31 @@ document.addEventListener("DOMContentLoaded", () => {
       return ["preencher", "achatar"].includes(document.getElementById("select-sub-formularios")?.value);
     }
     if (activeTabId === "tab-texto") {
-      return ["adicionar-texto", "editar-metadados"].includes(document.getElementById("select-sub-texto")?.value);
+      return ["adicionar-texto", "editar-metadados", "editar-texto"].includes(document.getElementById("select-sub-texto")?.value);
     }
     return activeTabId === "tab-seguranca"
       && document.getElementById("select-sub-seguranca")?.value === "comprimir";
   }
 
+  function canDownloadPreview() {
+    return Boolean(previewBlob && previewSource === currentFile && previewRevision === editRevision
+      && previewToolKey === getActiveOperationKey() && !previewIsStale && !previewIsGenerating && !activeJob);
+  }
+
+  function updatePreviewDownload() {
+    if (btnBaixarPrevia) btnBaixarPrevia.disabled = !canDownloadPreview();
+    if (avisoPreviaDesatualizada) {
+      const stale = Boolean(previewBlob && (previewIsStale || previewRevision !== editRevision || previewSource !== currentFile));
+      avisoPreviaDesatualizada.classList.toggle('hidden', !stale);
+      avisoPreviaDesatualizada.textContent = 'O documento ou as edições mudaram. Gere uma nova prévia antes de baixar.';
+    }
+  }
+
   function updatePreviewControls() {
+    document.getElementById('footer-file').textContent = currentFile?.name || 'Nenhum arquivo';
+    document.getElementById('footer-pages').textContent = currentPdfDoc?.numPages || '—';
+    syncTextTargets();
+    signatureEditor.sync();
     const hasOriginal = Boolean(originalFile);
     const hasPreview = Boolean(previewBlob);
     if (btnMostrarOriginal) {
@@ -156,7 +176,7 @@ document.addEventListener("DOMContentLoaded", () => {
       btnMostrarPrevia.classList.toggle("active", currentViewMode === "preview");
       btnMostrarPrevia.setAttribute("aria-pressed", String(currentViewMode === "preview"));
     }
-    if (btnBaixarPrevia) btnBaixarPrevia.disabled = !hasPreview;
+    updatePreviewDownload();
     if (estadoVisualizacao) {
       if (currentViewMode === "preview") {
         estadoVisualizacao.textContent = previewIsStale
@@ -170,20 +190,25 @@ document.addEventListener("DOMContentLoaded", () => {
         estadoVisualizacao.textContent = "Nenhum documento aberto";
       }
     }
-    if (avisoPreviaDesatualizada) {
-      avisoPreviaDesatualizada.classList.toggle("hidden", !previewIsStale);
-    }
   }
 
   function updatePrimaryAction() {
     if (!btnExecutar) return;
-    if (previewIsGenerating) {
+    updatePreviewDownload();
+    signatureEditor.setBusy(Boolean(activeJob));
+    if (activeJob) {
       btnExecutar.disabled = true;
       btnExecutar.textContent = "Gerando...";
       return;
     }
-    btnExecutar.textContent = isPreviewOperation() ? "Pré-visualizar" : "Aplicar";
-    btnExecutar.disabled = activeTabId === "tab-juntar" && joinFiles.length < 2;
+    const operation = getActiveOperationKey().split(':')[1];
+    const labels = { listar: 'Ver campos', 'extrair-texto': 'Extrair texto', proteger: 'Proteger e baixar', 'remover-senha': 'Remover senha e baixar' };
+    btnExecutar.textContent = isPreviewOperation() ? 'Gerar prévia'
+      : activeTabId === 'tab-juntar' ? 'Juntar e baixar' : labels[operation] || 'Aplicar';
+    btnExecutar.disabled = (activeTabId === 'tab-juntar' && joinFiles.length < 2)
+      || (operation === 'assinatura' && !signatureEditor.ready())
+      || (operation === 'preencher' && !formEditorReady)
+      || (operation === 'editar-texto' && (!textDrafts.size || [...textDrafts.values()].some(edit => !edit.novo.trim())));
   }
 
   function downloadBlob(blob, filename) {
@@ -197,12 +222,32 @@ document.addEventListener("DOMContentLoaded", () => {
     link.remove();
   }
 
+  function cancelOperation() {
+    const job = activeJob; activeJob = null;
+    job?.controller.abort();
+    previewIsGenerating = false;
+    if (job && viewerLoadingTask && !currentPdfDoc) disposeViewer();
+  }
+  function beginOperation() {
+    cancelOperation();
+    viewSelection++;
+    const job = { revision: editRevision, source: currentFile, tool: getActiveOperationKey(), tab: activeTabId, controller: new AbortController() };
+    activeJob = job;
+    return job;
+  }
+  function isCurrentJob(job) {
+    return activeJob === job && !job.controller.signal.aborted && job.source === currentFile && job.tool === getActiveOperationKey();
+  }
+
   function discardPreview(restoreOriginal = true) {
+    const wasLoadingResult = Boolean(activeJob && viewerLoadingTask && !currentPdfDoc);
+    cancelOperation();
     const shouldRestoreOriginal = restoreOriginal
-      && currentViewMode === "preview"
+      && (currentViewMode === "preview" || wasLoadingResult)
       && Boolean(originalFile);
     previewRequestId += 1;
     previewBlob = null;
+    previewRevision = -1; previewSource = null;
     previewDownloadName = "";
     previewToolKey = "";
     previewIsStale = false;
@@ -216,19 +261,21 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function showOriginalDocument() {
-    if (!originalFile) return;
-    const loaded = await loadPdfInViewer(await originalFile.arrayBuffer());
-    if (!loaded) return;
-    currentViewMode = "original";
-    updatePreviewControls();
+    const file = originalFile, generation = documentGeneration, selection = ++viewSelection;
+    if (!file) return;
+    const isValid = () => file === originalFile && generation === documentGeneration && selection === viewSelection;
+    const loaded = await loadPdfInViewer(await file.arrayBuffer(), isValid);
+    if (!loaded || !isValid()) return;
+    currentViewMode = 'original'; updatePreviewControls();
   }
 
   async function showPreviewDocument() {
-    if (!previewBlob) return;
-    const loaded = await loadPdfInViewer(await previewBlob.arrayBuffer());
-    if (!loaded) return;
-    currentViewMode = "preview";
-    updatePreviewControls();
+    const blob = previewBlob, generation = documentGeneration, selection = ++viewSelection;
+    if (!blob) return;
+    const isValid = () => blob === previewBlob && generation === documentGeneration && selection === viewSelection;
+    const loaded = await loadPdfInViewer(await blob.arrayBuffer(), isValid);
+    if (!loaded || !isValid()) return;
+    currentViewMode = 'preview'; updatePreviewControls();
   }
 
   function handleToolFieldChange(event) {
@@ -241,11 +288,13 @@ document.addEventListener("DOMContentLoaded", () => {
     ]);
     if (operationSelectors.has(event.target.id)) {
       const newKey = getActiveOperationKey();
-      if ((previewBlob && newKey !== previewToolKey)
+      if ((activeJob && activeJob.tool !== newKey)
+        || (previewBlob && newKey !== previewToolKey)
         || (previewIsGenerating && newKey !== previewToolKey)) {
         discardPreview();
       }
     } else {
+      editRevision++;
       if (previewBlob) previewIsStale = true;
       if (previewIsGenerating) previewChangedDuringRequest = true;
       updatePreviewControls();
@@ -262,23 +311,29 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnMostrarPrevia) btnMostrarPrevia.addEventListener("click", showPreviewDocument);
   if (btnBaixarPrevia) {
     btnBaixarPrevia.addEventListener("click", () => {
-      if (previewBlob) downloadBlob(previewBlob, previewDownloadName || "previa.pdf");
+      if (!canDownloadPreview()) {
+        showFeedback('Gere uma nova prévia do documento atual antes de baixar.', 'info');
+        updatePreviewDownload();
+        return;
+      }
+      downloadBlob(previewBlob, previewDownloadName || 'previa.pdf');
     });
   }
 
   function updateJoinActionState() {
-    if (!btnExecutar || btnExecutar.textContent === "Processando...") return;
+    if (!btnExecutar || activeTabId !== "tab-juntar" || btnExecutar.textContent === "Processando...") return;
     btnExecutar.disabled = activeTabId === "tab-juntar" && joinFiles.length < 2;
   }
 
   function renderJoinFiles() {
+    if (activeJob?.tab === "tab-juntar") discardPreview();
     if (!listaArquivosJuntar) return;
     listaArquivosJuntar.replaceChildren();
 
     if (joinFiles.length === 0) {
       const hint = document.createElement("p");
       hint.className = "join-files-hint";
-      hint.textContent = "Selecione ao menos dois PDFs para habilitar Aplicar.";
+      hint.textContent = "Adicione pelo menos dois PDFs para juntar.";
       listaArquivosJuntar.appendChild(hint);
       updateJoinActionState();
       return;
@@ -372,15 +427,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!dropZone) return;
     const heading = dropZone.querySelector("h3");
     const hint = dropZone.querySelector("p");
-    const singleFileLabel = dropZone.querySelector('label[for="file-input"]');
+    const singleFileLabel = dropZone.querySelector("label");
     if (activeTabId === "tab-juntar") {
       if (heading) heading.textContent = "Solte vários PDFs para juntar";
-      if (hint) hint.textContent = "Ou use o seletor múltiplo na faixa de ferramentas.";
-      singleFileLabel?.classList.add("hidden");
-    } else {
-      if (heading) heading.textContent = "Arraste e solte seu arquivo PDF aqui";
-      if (hint) hint.textContent = "ou clique no botão abaixo para selecionar";
+      if (hint) hint.textContent = "Escolha os arquivos e organize a ordem na lista.";
       singleFileLabel?.classList.remove("hidden");
+      if (singleFileLabel) { singleFileLabel.htmlFor = "input-multiplos-pdfs"; singleFileLabel.textContent = "Escolher PDFs"; }
+    } else {
+      if (heading) heading.textContent = "Abra um PDF para editar.";
+      if (hint) hint.textContent = "Arraste o arquivo para cá ou escolha no computador.";
+      singleFileLabel?.classList.remove("hidden");
+      if (singleFileLabel) { singleFileLabel.htmlFor = "file-input"; singleFileLabel.textContent = "Escolher PDF"; }
     }
   }
 
@@ -405,6 +462,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
       updateDropZoneForActiveTab();
+      refreshToolNavigation();
       updatePrimaryAction();
       updateJoinActionState();
     });
@@ -441,6 +499,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (selectSubAnotacoes) {
     selectSubAnotacoes.addEventListener("change", () => {
       const v = selectSubAnotacoes.value;
+      document.getElementById("box-anot-assinatura").classList.toggle("hidden", v !== "assinatura");
       boxAnotMarca?.classList.toggle("hidden", v !== "marca-dagua");
       boxAnotNumerar?.classList.toggle("hidden", v !== "numerar");
       boxAnotNota?.classList.toggle("hidden", v !== "nota");
@@ -463,6 +522,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (selectSubTexto) {
     selectSubTexto.addEventListener("change", () => {
       const v = selectSubTexto.value;
+      document.getElementById("box-texto-editar").classList.toggle("hidden", v !== "editar-texto");
       boxTextoAdd?.classList.toggle("hidden", v !== "adicionar-texto");
       boxTextoMeta?.classList.toggle("hidden", v !== "editar-metadados");
     });
@@ -479,86 +539,331 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  async function loadPdfInViewer(arrayBuffer) {
-    if (!window.pdfjsLib) return false;
+  const toolCopy = {
+    assinatura: ['Adicionar assinatura', 'Desenhe, posicione e ajuste a assinatura antes de gerar a prévia.'],
+    girar: ['Girar páginas', 'Mude a orientação de todas as páginas ou só das que escolher.'],
+    extrair: ['Extrair páginas', 'Crie um novo PDF apenas com as páginas que você precisa.'],
+    excluir: ['Excluir páginas', 'Escolha as páginas que quer remover. O original fica preservado.'],
+    reordenar: ['Reordenar páginas', 'Escreva a sequência desejada. Por exemplo: 3, 1, 2.'],
+    'marca-dagua': ["Marca d’água", 'Adicione uma marca discreta em todas as páginas.'],
+    numerar: ['Numerar páginas', 'Escolha o formato e onde os números devem aparecer.'],
+    nota: ['Adicionar nota', 'Deixe um comentário na página escolhida.'],
+    destacar: ['Destacar texto', 'Encontre um trecho e aplique realce, sublinhado ou risco.'],
+    listar: ['Ver campos', 'Veja quais campos podem ser preenchidos neste formulário.'],
+    preencher: ['Preencher formulário', 'Preencha os campos abaixo e confira o resultado na prévia.'],
+    achatar: ['Fixar preenchimento', 'Torne os campos parte do documento. Eles deixam de ser editáveis.'],
+    'extrair-texto': ['Extrair texto', 'Copie o texto do documento. Páginas digitalizadas podem não conter texto selecionável.'],
+    'editar-texto': ['Editar texto existente', 'Selecione uma linha e substitua o conteúdo. Apenas texto visível; digitalizações com OCR não são aceitas.'],
+    'adicionar-texto': ['Adicionar texto', 'Insira um texto no alto da página escolhida.'],
+    'editar-metadados': ['Título e autor', 'Atualize as informações que acompanham o arquivo.'],
+    comprimir: ['Reduzir tamanho', 'Otimize a estrutura do PDF sem alterar a aparência das páginas.'],
+    proteger: ['Adicionar senha', 'Defina uma senha para abrir o documento. Guarde-a em um lugar seguro.'],
+    'remover-senha': ['Remover senha', 'Informe a senha atual para salvar uma cópia sem proteção.'],
+    juntar: ['Juntar PDFs', 'Adicione os arquivos e organize a ordem antes de juntar.'],
+  };
+  const operationSelectors = new Map();
+  let formRequest = 0;
+  let loadedFormFile = null;
+
+  function refreshToolNavigation() {
+    document.body.dataset.tool = activeTabId;
+    for (const btn of tabBtns) {
+      const active = btn.dataset.tab === activeTabId;
+      btn.setAttribute('aria-expanded', String(active));
+      btn.nextElementSibling?.classList.toggle('hidden', !active);
+    }
+    for (const [tab, select] of operationSelectors) {
+      document.querySelectorAll(`[data-operation-tab="${tab}"]`).forEach(button => {
+        const active = button.dataset.operation === select.value;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+    }
+    const operation = operationSelectors.get(activeTabId)?.value || 'juntar';
+    const [title, description] = toolCopy[operation];
+    document.getElementById('active-tool-title').textContent = title;
+    document.getElementById('active-tool-description').textContent = description;
+    const hint = document.getElementById('page-range-hint');
+    if (hint) hint.textContent = operation === 'girar'
+      ? 'Deixe vazio para girar todas. Para selecionar, use 1, 3-5.'
+      : 'Informe as páginas. Por exemplo: 1, 3-5.';
+    updatePrimaryAction();
+    if (operation === 'preencher') loadFormEditor();
+    if (operation === 'editar-texto') loadEditableText();
+    syncTextTargets();
+    signatureEditor.sync();
+  }
+
+  for (const btn of tabBtns) {
+    const tab = btn.dataset.tab;
+    const select = document.querySelector(`#${tab} select[id^="select-sub-"]`);
+    const list = document.createElement('div');
+    list.className = 'operation-list';
+    list.id = `${tab}-tools`;
+    list.setAttribute('aria-label', `Ferramentas de ${btn.textContent.trim()}`);
+    btn.setAttribute('aria-controls', list.id);
+    btn.after(list);
+    if (!select) continue;
+    operationSelectors.set(tab, select);
+    select.closest('.form-row').classList.add('hidden');
+    for (const option of select.options) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'operation-button';
+      button.dataset.operation = option.value;
+      button.dataset.operationTab = tab;
+      button.textContent = toolCopy[option.value][0];
+      button.addEventListener('click', () => {
+        select.value = option.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      list.append(button);
+    }
+    select.addEventListener('change', refreshToolNavigation);
+  }
+  const downloadHint = document.createElement('p');
+  downloadHint.className = 'action-note';
+  downloadHint.textContent = 'Confira a prévia e baixe uma cópia. Seu arquivo original fica preservado.';
+  document.querySelector('.action-buttons').append(downloadHint);
+
+  async function loadFormEditor() {
+    const editor = document.getElementById('form-fields-editor');
+    if (!currentFile || !editor || loadedFormFile === currentFile) return;
+    const file = currentFile;
+    const request = ++formRequest;
+    formEditorReady = false;
+    updatePrimaryAction();
+    editor.textContent = 'Lendo os campos do documento…';
     try {
-      const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
-      currentPdfDoc = await loadingTask.promise;
-      currentPageNum = 1;
-      currentRotation = 0;
-
-      if (spanPageCount) spanPageCount.textContent = currentPdfDoc.numPages;
-      if (inputPageNum) {
-        inputPageNum.max = currentPdfDoc.numPages;
-        inputPageNum.value = 1;
+      const body = new FormData(); body.append('arquivo', file);
+      const response = await window.localPdfRequest('/api/formularios/listar', { body });
+      const result = await response.json();
+      if (request !== formRequest || currentFile !== file) return;
+      editor.replaceChildren();
+      loadedFormFile = file;
+      const values = {};
+      const serialize = () => {
+        document.getElementById('input-form-json').value = JSON.stringify(values);
+      };
+      for (const [index, field] of result.campos.entries()) {
+        // A field can appear on several pages; one editor updates all its widgets.
+        if (Object.hasOwn(values, field.nome)) continue;
+        const row = document.createElement('div'); row.className = 'form-row';
+        const label = document.createElement('label'); label.textContent = field.nome;
+        const control = document.createElement(field.opcoes?.length ? 'select' : 'input');
+        control.id = `pdf-field-${index}`; label.htmlFor = control.id;
+        const boolean = ['checkbox', 'radiobutton', 'radio-button'].includes(field.tipo);
+        if (boolean) {
+          control.type = 'checkbox'; control.checked = field.valor !== 'Off';
+          values[field.nome] = control.checked; row.classList.add('form-checkbox');
+        } else {
+          if (field.opcoes?.length) for (const value of field.opcoes) {
+            const option = document.createElement('option'); option.value = value; option.textContent = value; control.append(option);
+          }
+          control.className = 'input-control'; control.value = field.valor || '';
+          values[field.nome] = control.value;
+        }
+        control.disabled = field.somente_leitura || !['text', 'checkbox', 'radiobutton', 'radio-button', 'listbox', 'combobox'].includes(field.tipo);
+        if (control.disabled) { delete values[field.nome]; label.textContent += ' (somente leitura)'; }
+        control.addEventListener('input', () => { values[field.nome] = boolean ? control.checked : control.value; serialize(); });
+        row.append(label, control); editor.append(row);
       }
-      if (viewerSection) viewerSection.classList.remove("hidden");
+      serialize();
+      formEditorReady = Object.keys(values).length > 0;
+      updatePrimaryAction();
+      if (!result.campos.length) editor.textContent = 'Este PDF não tem campos preenchíveis.';
+    } catch (error) {
+      if (request === formRequest) editor.textContent = error.message;
+    }
+  }
+  function isEditingText() { return getActiveOperationKey() === 'tab-texto:editar-texto'; }
 
-      renderPage(currentPageNum);
+  function syncTextTargets() {
+    const layer = document.getElementById('text-target-layer');
+    if (!layer) return;
+    layer.replaceChildren();
+    if (!isEditingText() || currentViewMode !== 'original' || !editableInfo?.disponivel || editablePageNumber !== currentPageNum) return;
+    const [x0, y0, x1, y1] = editableInfo.bounds;
+    const rotatePoint = (x, y) => {
+      const u = (x - x0) / (x1 - x0), v = (y - y0) / (y1 - y0);
+      return currentRotation === 90 ? [1 - v, u] : currentRotation === 180 ? [1 - u, 1 - v] : currentRotation === 270 ? [v, 1 - u] : [u, v];
+    };
+    for (const line of editableInfo.linhas.filter(item => item.supported)) {
+      const [left, top, right, bottom] = line.rect;
+      const points = [[left, top], [right, top], [left, bottom], [right, bottom]].map(p => rotatePoint(...p));
+      const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'text-target';
+      button.classList.toggle('selected', selectedTextLine?.id === line.id);
+      button.setAttribute('aria-label', `Editar: ${line.texto}`);
+      button.setAttribute('aria-pressed', String(selectedTextLine?.id === line.id));
+      button.title = line.texto;
+      Object.assign(button.style, { left: `${Math.min(...xs) * 100}%`, top: `${Math.min(...ys) * 100}%`, width: `${(Math.max(...xs) - Math.min(...xs)) * 100}%`, height: `${(Math.max(...ys) - Math.min(...ys)) * 100}%` });
+      button.addEventListener('click', () => { selectEditableLine(line.id); document.getElementById('input-edit-substituicao').focus(); });
+      layer.append(button);
+    }
+  }
+
+  function selectEditableLine(id) {
+    selectedTextLine = id === '' ? null : editableInfo?.linhas.find(line => line.id === Number(id) && line.supported) || null;
+    const select = document.getElementById('select-edit-linha');
+    const input = document.getElementById('input-edit-substituicao');
+    select.value = selectedTextLine ? String(selectedTextLine.id) : '';
+    input.disabled = !selectedTextLine;
+    const draft = textDrafts.get(`${editablePageNumber}:${selectedTextLine?.id}`);
+    input.value = selectedTextLine ? draft?.novo ?? selectedTextLine.texto : '';
+    document.getElementById('text-edit-font').textContent = selectedTextLine
+      ? `Fonte de substituição: ${selectedTextLine.fonte}. O texto pode diminuir para caber no mesmo espaço.` : 'Selecione uma linha no documento ou na lista.';
+    syncTextTargets(); updatePrimaryAction();
+  }
+
+  function resetTextEditor() {
+    textLoadRequest++;
+    editableFile = null; editableInfo = null; selectedTextLine = null;
+    textDrafts.clear();
+    document.getElementById('text-edit-count').textContent = '';
+    document.getElementById('text-target-layer').replaceChildren();
+  }
+
+  async function loadEditableText() {
+    if (!isEditingText() || !originalFile || !currentPdfDoc) return;
+    document.getElementById('input-edit-pagina').max = currentPdfDoc.numPages;
+    document.getElementById('input-edit-pagina').value = currentPageNum;
+    if (editableFile === originalFile && editablePageNumber === currentPageNum && editableInfo) { syncTextTargets(); return; }
+    const request = ++textLoadRequest, source = originalFile, pageNumber = currentPageNum;
+    const status = document.getElementById('text-edit-status');
+    const controls = document.getElementById('text-edit-controls');
+    status.textContent = 'Verificando o texto desta página…'; controls.classList.add('hidden');
+    selectedTextLine = null; editableInfo = null; syncTextTargets(); updatePrimaryAction();
+    try {
+      const body = new FormData(); body.append('arquivo', source); body.append('pagina', String(pageNumber));
+      const response = await window.localPdfRequest('/api/texto/listar-editaveis', { body });
+      const info = await response.json();
+      if (request !== textLoadRequest || source !== originalFile || pageNumber !== currentPageNum) return;
+      editableFile = source; editablePageNumber = pageNumber; editableInfo = info;
+      status.textContent = info.disponivel ? 'Clique numa linha do documento ou escolha na lista.' : info.motivo;
+      status.classList.toggle('unavailable', !info.disponivel);
+      controls.classList.toggle('hidden', !info.disponivel);
+      const select = document.getElementById('select-edit-linha');
+      select.replaceChildren(new Option('Escolha uma linha…', ''));
+      for (const line of info.linhas) {
+        const option = new Option(line.texto + (line.supported ? '' : ' (estilo não suportado)'), String(line.id));
+        option.disabled = !line.supported; select.append(option);
+      }
+      selectEditableLine('');
+    } catch (error) {
+      if (request === textLoadRequest) { status.textContent = error.message; status.classList.add('unavailable'); }
+    }
+  }
+  document.getElementById('select-edit-linha').addEventListener('change', event => {
+    if (event.target.value === '') { selectedTextLine = null; document.getElementById('input-edit-substituicao').disabled = true; syncTextTargets(); return; }
+    selectEditableLine(event.target.value);
+  });
+  document.getElementById('input-edit-substituicao').addEventListener('input', event => {
+    if (!selectedTextLine) return;
+    const key = `${editablePageNumber}:${selectedTextLine.id}`, value = event.target.value;
+    if (value === selectedTextLine.texto) textDrafts.delete(key);
+    else textDrafts.set(key, { pagina: editablePageNumber, linha: selectedTextLine.id, original: selectedTextLine.texto, novo: value });
+    document.getElementById('text-edit-count').textContent = textDrafts.size ? `${textDrafts.size} ${textDrafts.size === 1 ? 'linha alterada' : 'linhas alteradas'}. Gere a prévia para conferir.` : '';
+    updatePrimaryAction();
+  });
+  document.getElementById('input-edit-pagina').addEventListener('change', event => {
+    const number = Number(event.target.value);
+    if (!Number.isInteger(number) || number < 1 || number > (currentPdfDoc?.numPages || 0)) { event.target.value = currentPageNum; return; }
+    currentPageNum = number; queueRenderPage(number); loadEditableText();
+  });
+
+  selectSubAnotacoes.dispatchEvent(new Event("change", { bubbles: true }));
+  selectSubTexto.dispatchEvent(new Event("change", { bubbles: true }));
+  refreshToolNavigation();
+
+  function disposeViewer() {
+    viewerGeneration++;
+    currentRenderTask?.cancel(); currentRenderTask = null;
+    const task = viewerLoadingTask, doc = currentPdfDoc;
+    viewerLoadingTask = null; currentPdfDoc = null;
+    pendingPageNum = null; isRendering = false;
+    viewerDisposal = Promise.allSettled([viewerDisposal, task ? task.destroy() : doc?.destroy()]).then(() => undefined);
+    return viewerDisposal;
+  }
+
+  async function loadPdfInViewer(arrayBuffer, isValid = () => true) {
+    if (!window.pdfjsLib || !isValid()) return false;
+    const disposal = disposeViewer();
+    const generation = viewerGeneration;
+    await disposal;
+    if (generation !== viewerGeneration || !isValid()) return false;
+    const loadingTask = window.pdfjsLib.getDocument({
+      data: arrayBuffer, isEvalSupported: false,
+      cMapUrl: '/static/vendor/pdfjs/cmaps/', cMapPacked: true,
+      standardFontDataUrl: '/static/vendor/pdfjs/standard_fonts/',
+      wasmUrl: '/static/vendor/pdfjs/wasm/',
+    });
+    viewerLoadingTask = loadingTask;
+    try {
+      const doc = await loadingTask.promise;
+      const firstPage = await doc.getPage(1);
+      if (generation !== viewerGeneration || !isValid()) {
+        if (viewerLoadingTask === loadingTask) await disposeViewer();
+        else await loadingTask.destroy();
+        return false;
+      }
+      currentPdfDoc = doc;
+      const pageWidth = firstPage.getViewport({ scale: 1 }).width;
+      currentScale = Math.min(1, Math.max(.15, (viewerWorkspace.clientWidth - 32) / pageWidth));
+      if (spanZoomLevel) spanZoomLevel.textContent = `${Math.round(currentScale * 100)}%`;
+      currentPageNum = 1; currentRotation = 0;
+      if (spanPageCount) spanPageCount.textContent = doc.numPages;
+      if (inputPageNum) { inputPageNum.max = doc.numPages; inputPageNum.value = 1; }
+      viewerSection?.classList.remove('hidden');
+      renderPage(1); updatePreviewControls();
       return true;
-    } catch (err) {
-      console.error("Erro ao carregar visualizador:", err);
-      showFeedback(`Não foi possível exibir o PDF: ${err.message}`, "error");
+    } catch (error) {
+      if (generation === viewerGeneration && isValid()) {
+        await disposeViewer();
+        showFeedback(`Não foi possível exibir o PDF: ${error.message}`, 'error');
+      }
       return false;
     }
   }
 
   function queueRenderPage(num) {
-    if (isRendering) {
-      pendingPageNum = num;
-    } else {
-      renderPage(num);
-    }
+    if (isRendering) pendingPageNum = num;
+    else renderPage(num);
   }
 
   async function renderPage(num) {
     if (!currentPdfDoc || !pdfCanvas) return;
+    const doc = currentPdfDoc, generation = viewerGeneration;
     isRendering = true;
-
+    let task;
     try {
-      const page = await currentPdfDoc.getPage(num);
-      const viewport = page.getViewport({
-        scale: currentScale,
-        rotation: (page.rotate + currentRotation) % 360,
-      });
-
-      const ctx = pdfCanvas.getContext("2d");
+      const page = await doc.getPage(num);
+      if (generation !== viewerGeneration || doc !== currentPdfDoc) return;
+      const viewport = page.getViewport({ scale: currentScale, rotation: (page.rotate + currentRotation) % 360 });
       const outputScale = window.devicePixelRatio || 1;
-
       pdfCanvas.width = Math.floor(viewport.width * outputScale);
       pdfCanvas.height = Math.floor(viewport.height * outputScale);
-      pdfCanvas.style.width = Math.floor(viewport.width) + "px";
-      pdfCanvas.style.height = Math.floor(viewport.height) + "px";
-
-      const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
-
-      const renderContext = {
-        canvasContext: ctx,
-        transform: transform,
-        viewport: viewport,
-      };
-
-      if (currentRenderTask) {
-        currentRenderTask.cancel();
-      }
-
-      currentRenderTask = page.render(renderContext);
-      await currentRenderTask.promise;
-      currentRenderTask = null;
-      isRendering = false;
-
+      pdfCanvas.style.width = `${viewport.width}px`;
+      pdfCanvas.style.height = `${viewport.height}px`;
+      task = page.render({ canvas: pdfCanvas, canvasContext: pdfCanvas.getContext('2d'), viewport,
+        transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null });
+      currentRenderTask = task;
+      await task.promise;
+      if (generation !== viewerGeneration || doc !== currentPdfDoc) return;
       if (inputPageNum) inputPageNum.value = num;
-
-      if (pendingPageNum !== null) {
-        const next = pendingPageNum;
-        pendingPageNum = null;
-        renderPage(next);
+      signatureEditor.viewport(viewport, num, doc.numPages);
+      if (isEditingText()) loadEditableText();
+    } catch (error) {
+      if (generation === viewerGeneration && error.name !== 'RenderingCancelledException') console.error('Erro na renderização da página:', error);
+    } finally {
+      if (generation === viewerGeneration && doc === currentPdfDoc) {
+        if (currentRenderTask === task) currentRenderTask = null;
+        isRendering = false;
+        if (pendingPageNum !== null) {
+          const next = pendingPageNum; pendingPageNum = null; renderPage(next);
+        }
       }
-    } catch (err) {
-      if (err.name !== "RenderingCancelledException") {
-        console.error("Erro na renderização da página:", err);
-      }
-      isRendering = false;
     }
   }
 
@@ -570,7 +875,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     discardPreview(false);
+    documentGeneration++; viewSelection++; disposeViewer();
     currentFile = file;
+    resetTextEditor();
+    signatureEditor.reset();
+    loadedFormFile = null;
+    formEditorReady = false;
     originalFile = file;
     currentViewMode = "original";
     updatePreviewControls();
@@ -582,24 +892,25 @@ document.addEventListener("DOMContentLoaded", () => {
     if (fileInfoCard) fileInfoCard.classList.remove("hidden");
     if (actionsPanel) actionsPanel.classList.remove("hidden");
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const arrayBuffer = e.target.result;
-      await loadPdfInViewer(arrayBuffer);
-    };
-    reader.readAsArrayBuffer(file);
+    const generation = documentGeneration;
+    const isValid = () => generation === documentGeneration && currentFile === file;
+    // This asynchronous read must not replace a newer file or a newer preview.
+    const selection = viewSelection;
+    file.arrayBuffer().then(buffer => loadPdfInViewer(buffer, () => isValid() && selection === viewSelection));
 
     const formData = new FormData();
     formData.append("arquivo", file);
 
     try {
-      const res = await fetch("/api/inspecionar", {
+      const res = await window.localPdfRequest("/api/inspecionar", {
         method: "POST",
         body: formData,
       });
 
       if (res.ok) {
         const data = await res.json();
+        if (currentFile !== file) return;
+        if (selectSubForm?.value === "preencher") loadFormEditor();
         if (fileMeta) {
           fileMeta.textContent = `Tamanho: ${formatBytes(data.tamanho)} | Páginas: ${data.total_paginas}`;
         }
@@ -608,14 +919,20 @@ document.addEventListener("DOMContentLoaded", () => {
         showFeedback(err.erro || err.detail || "Erro ao ler metadados do PDF.", "error");
       }
     } catch (err) {
+      if (!isValid()) return;
+      showFeedback(err.message, "error");
       if (fileMeta) fileMeta.textContent = `Tamanho: ${formatBytes(file.size)}`;
     }
   }
 
   function resetFile() {
+    documentGeneration++; viewSelection++; disposeViewer();
     currentFile = null;
+    resetTextEditor();
+    signatureEditor.reset();
     originalFile = null;
     currentPdfDoc = null;
+    document.getElementById('footer-operation').textContent = 'Aguardando';
     discardPreview(false);
     currentViewMode = "none";
     updatePreviewControls();
@@ -741,7 +1058,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  async function handlePdfDownloadResponse(response, fallbackName) {
+  async function handlePdfDownloadResponse(response, fallbackName, job) {
+    if (!isCurrentJob(job)) return;
     let downloadName = fallbackName;
     const disposition = response.headers.get("Content-Disposition");
     if (disposition && disposition.includes("filename=")) {
@@ -753,13 +1071,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const blob = await response.blob();
 
+    if (!isCurrentJob(job)) return;
+    if (job.tool === 'tab-seguranca:proteger') {
+      downloadBlob(blob, downloadName);
+      showFeedback(`PDF protegido. Arquivo '${downloadName}' baixado.`, 'success');
+      return;
+    }
     const processedBuffer = await blob.arrayBuffer();
-    await loadPdfInViewer(processedBuffer);
+    if (!isCurrentJob(job)) return;
+    await loadPdfInViewer(processedBuffer, () => isCurrentJob(job));
+    if (!isCurrentJob(job)) return;
 
-    if (activeTabId === "tab-juntar") {
+    if (job.tab === "tab-juntar") {
       discardPreview(false);
       currentFile = new File([blob], downloadName, { type: blob.type || "application/pdf" });
       originalFile = currentFile;
+      resetTextEditor();
+      signatureEditor.reset();
       currentViewMode = "original";
       if (fileInfoCard) fileInfoCard.classList.remove("hidden");
       if (fileName) fileName.textContent = downloadName;
@@ -780,7 +1108,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnExecutar) {
     btnExecutar.addEventListener("click", async () => {
       if (activeTabId === "tab-juntar") {
-        const files = joinFiles;
+        const files = [...joinFiles];
         if (files.length < 2) {
           showFeedback("Selecione pelo menos 2 arquivos PDF para juntar.", "error");
           return;
@@ -791,6 +1119,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
+        const job = beginOperation();
         btnExecutar.disabled = true;
         btnExecutar.textContent = "Processando...";
         showFeedback("Juntando arquivos PDF...", "info");
@@ -799,22 +1128,23 @@ document.addEventListener("DOMContentLoaded", () => {
         files.forEach((file) => formData.append("arquivos", file));
 
         try {
-          const res = await fetch("/api/paginas/juntar", {
+          const res = await window.localPdfRequest("/api/paginas/juntar", {
             method: "POST",
-            body: formData,
+            body: formData, signal: job.controller.signal,
           });
+          if (!isCurrentJob(job)) return;
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.erro || err.detail || `Erro HTTP ${res.status}`);
           }
 
-          await handlePdfDownloadResponse(res, "documento_juntado.pdf");
+          await handlePdfDownloadResponse(res, "documento_juntado.pdf", job);
         } catch (e) {
-          showFeedback(`Falha ao juntar PDFs: ${e.message}`, "error");
+          if (isCurrentJob(job) && e.name !== "AbortError") showFeedback(`Falha ao juntar PDFs: ${e.message}`, "error");
         } finally {
-          btnExecutar.disabled = activeTabId === "tab-juntar" && joinFiles.length < 2;
-          btnExecutar.textContent = "Aplicar";
+          if (activeJob === job) activeJob = null;
+          updatePrimaryAction();
         }
         return;
       }
@@ -824,6 +1154,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
+      const job = beginOperation();
       const previewMode = isPreviewOperation();
       const operationKey = getActiveOperationKey();
       const requestId = previewMode ? ++previewRequestId : null;
@@ -836,7 +1167,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         btnExecutar.disabled = true;
         btnExecutar.textContent = "Processando...";
-        showFeedback("Processando arquivo PDF com PerfectDF...", "info");
+        showFeedback("Processando PDF neste dispositivo...", "info");
       }
 
       const formData = new FormData();
@@ -863,7 +1194,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       } else if (activeTabId === "tab-anotacoes") {
         const acao = selectSubAnotacoes?.value;
-        if (acao === "marca-dagua") {
+        if (acao === "assinatura") {
+          url = "/api/assinatura/adicionar";
+          formData.append("assinatura", JSON.stringify(signatureEditor.data()));
+        } else if (acao === "marca-dagua") {
           url = "/api/anotacoes/marca-dagua";
           formData.append("texto", document.getElementById("input-marca-texto")?.value || "");
           formData.append("opacidade", document.getElementById("input-marca-opacidade")?.value || "0.3");
@@ -893,7 +1227,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       } else if (activeTabId === "tab-texto") {
         const acao = selectSubTexto?.value;
-        if (acao === "extrair-texto") {
+        if (acao === "editar-texto") {
+          url = "/api/texto/editar";
+          formData.append("edicoes", JSON.stringify([...textDrafts.values()]));
+        } else if (acao === "extrair-texto") {
           url = "/api/texto/extrair";
           isJsonResult = true;
         } else if (acao === "adicionar-texto") {
@@ -921,10 +1258,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       try {
-        const response = await fetch(url, {
+        const response = await window.localPdfRequest(url, {
           method: "POST",
-          body: formData,
+          body: formData, signal: job.controller.signal,
         });
+        if (!isCurrentJob(job)) return;
 
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
@@ -945,16 +1283,14 @@ document.addEventListener("DOMContentLoaded", () => {
           const disposition = response.headers.get("Content-Disposition");
           const filenameMatch = disposition?.match(/filename="?([^";]+)"?/);
           previewDownloadName = filenameMatch?.[1] || `processado_${currentFile.name}`;
-          const loaded = await loadPdfInViewer(await blob.arrayBuffer());
-          if (requestId !== previewRequestId) {
-            if (originalFile) await showOriginalDocument();
-            return;
-          }
+          const loaded = await loadPdfInViewer(await blob.arrayBuffer(), () => isCurrentJob(job) && requestId === previewRequestId);
+          if (!isCurrentJob(job) || requestId !== previewRequestId) return;
           if (!loaded) throw new Error("Não foi possível abrir a prévia do PDF.");
 
           previewBlob = blob;
+          previewRevision = job.revision; previewSource = job.source;
           previewToolKey = operationKey;
-          previewIsStale = previewChangedDuringRequest;
+          previewIsStale = previewChangedDuringRequest || previewRevision !== editRevision;
           currentViewMode = "preview";
           updatePreviewControls();
           if (activeTabId === "tab-seguranca" && selectSubSeg?.value === "comprimir") {
@@ -969,21 +1305,25 @@ document.addEventListener("DOMContentLoaded", () => {
             ? "Prévia pronta, mas campos foram alterados durante a geração."
             : "Prévia pronta. Revise antes de baixar.", "success");
         } else {
-          await handlePdfDownloadResponse(response, `processado_${currentFile.name}`);
+          await handlePdfDownloadResponse(response, `processado_${job.source.name}`, job);
         }
       } catch (err) {
-        showFeedback(`Erro ao processar: ${err.message}`, "error");
+        if (isCurrentJob(job) && err.name !== "AbortError") showFeedback(`Erro ao processar: ${err.message}`, "error");
       } finally {
+        if (activeJob === job) activeJob = null;
         if (previewMode) {
           if (requestId === previewRequestId) {
             previewIsGenerating = false;
             updatePrimaryAction();
+            updatePreviewControls();
           }
         } else {
           btnExecutar.disabled = false;
-          btnExecutar.textContent = "Aplicar";
+          updatePrimaryAction();
         }
       }
     });
   }
-});
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializePerfectDF, { once: true });
+else initializePerfectDF();

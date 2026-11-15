@@ -1,0 +1,23 @@
+{
+  "name": "perfectdf",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "start": "python3 -m http.server 8000 --directory dist",
+    "test:browser": "npm run build && playwright test"
+  },
+  "dependencies": {
+    "mupdf": "1.28.6",
+    "pdfjs-dist": "6.5.438"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

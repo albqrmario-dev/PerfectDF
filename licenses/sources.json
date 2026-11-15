@@ -1,0 +1,13 @@
+{
+  "mupdf": {
+    "version": "1.28.6",
+    "commit": "da5f5eb890d7b3fb76903160b5f7f48ba1301492",
+    "sourceUrl": "https://mupdf.com/downloads/archive/mupdf-1.28.6-source.tar.gz",
+    "sha256": "dc85000640a45d90ca9b77b061f6ca67cce0c4d4fbecf8819647baf573eef101"
+  },
+  "pdfjs": {
+    "version": "6.5.438",
+    "commit": "0a4153349dc473ba950fc17941c5ca7eda43c1de",
+    "sourceUrl": "https://github.com/mozilla/pdf.js/tree/0a4153349dc473ba950fc17941c5ca7eda43c1de"
+  }
+}

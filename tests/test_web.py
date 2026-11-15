@@ -34,7 +34,7 @@ def test_index() -> None:
     assert "PerfectDF" in response.text
     assert "text/html" in response.headers.get("content-type", "")
     assert "viewer-section" in response.text
-    assert "/static/vendor/pdfjs/pdf.min.js" in response.text
+    assert "/static/pdf-viewer.js" in response.text
 
 
 def test_static_files() -> None:
@@ -44,15 +44,16 @@ def test_static_files() -> None:
 
     response_js = client.get("/static/app.js")
     assert response_js.status_code == 200
-    assert "/api/ping" in response_js.text
+    assert "window.localPdfRequest" in response_js.text
+    assert "fetch(" not in response_js.text
 
 
 def test_pdfjs_vendor_files() -> None:
-    res_lib = client.get("/static/vendor/pdfjs/pdf.min.js")
+    res_lib = client.get("/static/vendor/pdfjs/pdf.min.mjs")
     assert res_lib.status_code == 200
-    assert "pdfjsLib" in res_lib.text
+    assert "getDocument" in res_lib.text
 
-    res_worker = client.get("/static/vendor/pdfjs/pdf.worker.min.js")
+    res_worker = client.get("/static/vendor/pdfjs/pdf.worker.min.mjs")
     assert res_worker.status_code == 200
     assert len(res_worker.content) > 100_000
 
@@ -272,3 +273,15 @@ def test_rota_seguranca_proteger_e_desproteger() -> None:
     doc_dec = pymupdf.open(stream=res_rem.content, filetype="pdf")
     assert not doc_dec.is_encrypted
     doc_dec.close()
+
+
+def test_license_and_source_distribution() -> None:
+    response = client.get("/LICENSE")
+    assert response.status_code == 200
+    assert "GNU AFFERO GENERAL PUBLIC LICENSE" in response.text
+    manifest = client.get("/sources/manifest.json")
+    assert manifest.status_code == 200
+    assert manifest.json()["pdfjs"]["version"] == "6.5.438"
+    source = client.head(manifest.json()["mupdf"]["source"])
+    assert source.status_code == 200
+    assert int(source.headers["content-length"]) > 60_000_000

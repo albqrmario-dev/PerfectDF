@@ -413,15 +413,87 @@ python -m perfectdf --help
 
 ---
 
-## 🌐 Interface Web
+## 🌐 Interface Web — processamento no navegador
 
-A interface web permite visualizar e editar PDFs no navegador. Com o ambiente virtual ativado e as dependências instaladas, inicie o servidor na raiz do projeto:
+A interface usa **MuPDF.js/WebAssembly em Web Workers** para editar PDFs no próprio dispositivo. Os arquivos não são enviados à API nem armazenados no servidor. O PDF.js 6.5.438, com versão fixa no lockfile, é responsável pela visualização. Ao trocar arquivos ou prévias, o visualizador anterior é destruído. Operações em andamento são invalidadas ao trocar de arquivo ou ferramenta. As bibliotecas, fontes e o WASM são servidos pelo próprio site, sem dependência de CDNs em tempo de execução.
+
+### Executar o site estático
+
+Requisitos: Node.js 22.13 ou superior, `tar` e Python 3 (apenas para o servidor estático de desenvolvimento).
+
+```bash
+npm ci
+npm run build
+npm start
+```
+
+Abra http://localhost:8000. O build gera `dist/`, incluindo o motor WASM. Não abra o HTML diretamente via `file://`: os módulos e workers precisam de HTTP/HTTPS.
+
+### Aparência clara e escura
+
+Na primeira visita, a interface acompanha a preferência de aparência do sistema, inclusive se ela mudar com o site aberto. O botão de aparência no cabeçalho (lua para ativar o tema escuro, sol para voltar ao claro) alterna a aparência e salva a escolha neste navegador; essa escolha passa a ter prioridade sobre o sistema. O mesmo controle está disponível na página de licenças. Se o armazenamento local estiver bloqueado, a alternância continua funcionando durante a visita.
+
+O tema muda apenas a interface. As páginas do PDF, o desenho da assinatura e o conteúdo exportado mantêm as cores originais.
+
+### Publicar na Vercel
+
+Importe este repositório na Vercel. O `vercel.json` já define:
+
+- Framework: Other (sem framework).
+- Build: `npm run build`.
+- Diretório de saída: `dist`.
+
+O build inclui a página de licenças, um arquivo dos fontes desta publicação e os fontes completos do MuPDF. Na primeira execução, baixa aproximadamente 69 MB do arquivo oficial do MuPDF e verifica seu SHA-256; as próximas execuções locais usam `.cache/perfectdf/`. Esses fontes são downloads separados e não são carregados ao abrir o editor. O build precisa de acesso à rede caso o cache ainda não exista.
+
+Não configure uma função Python para o site. A Vercel entrega apenas arquivos estáticos; uploads e downloads de PDFs são operações locais do navegador. A biblioteca Python, a CLI e a API continuam disponíveis para quem quiser executá-las localmente.
+
+### Recursos e limites
+
+A interface mantém operações de páginas, junção, anotações, texto, metadados, formulários, compressão e proteção AES-256. Não há o limite de upload de 50 MB da API no processamento local. O tamanho viável depende da memória e capacidade do dispositivo; PDFs grandes podem exigir um computador. Cada operação tem um prazo de cinco minutos e seu worker é encerrado ao concluir ou falhar para liberar memória.
+
+- A compressão é estrutural e sem rasterizar páginas: o nível médio usa object streams e o alto também otimiza fontes. Não recomprime imagens como o backend Python. Se não houver redução, conserva o arquivo original.
+- Inserção de texto, numeração e marca d'água usam Helvetica com caracteres latinos (incluindo português); caracteres não suportados retornam uma mensagem de erro.
+- Na junção, os campos de cada formulário recebem prefixos como `arquivo1_nome`, para que campos de documentos diferentes continuem independentes. Use “Listar Campos” para consultar os nomes finais.
+- PDFs que exigem senha podem ser abertos pela ferramenta “Remover Senha”, fornecendo a senha correta, e então editados. A extração de texto não faz OCR de páginas digitalizadas.
+- Não há service worker para instalar o site offline. Após os recursos serem carregados, a edição é local; isso não garante recarregar o site sem conexão.
+
+### Adicionar assinatura desenhada
+
+Em **Anotações → Adicionar assinatura**, clique em **Desenhar assinatura** e use mouse, toque ou caneta. **Apagar desenho** limpa a área para refazer; **Cancelar** preserva a assinatura já posicionada. Confirme com **Usar assinatura**.
+
+Arraste a assinatura sobre o documento e use o controle do canto para redimensioná-la. O campo **Página da assinatura** permite transferi-la para outra página. **Remover assinatura** elimina o desenho ainda não aplicado. Também é possível focar a assinatura e usar as setas para mover, Shift para passos maiores, `+`/`-` para redimensionar e Delete para remover.
+
+Use **Gerar prévia**, confira o PDF e clique em **Baixar PDF**. Para ajustar novamente, volte a **Original**. Uma prévia desatualizada da assinatura não pode ser baixada: gere outra após o ajuste. A ferramenta mantém uma assinatura por vez, antes de aplicar; o arquivo original não é sobrescrito.
+
+O desenho é exportado como traços vetoriais nas coordenadas nativas do PDF, com conversão pelo viewport do PDF.js. Zoom, rolagem, rotação e densidade de pixels da tela não são usados como coordenadas do arquivo. O PDF e o desenho permanecem locais; não há dependências novas nem armazenamento da assinatura entre sessões. Trata-se de uma assinatura visual desenhada, **sem certificado digital ou assinatura criptográfica**.
+
+### Editar texto existente
+
+Em **Texto → Editar texto existente**, escolha a página e clique numa linha do PDF (ou escolha a linha pela lista nos ajustes). Digite a substituição em **Novo texto**. Você pode alterar outras linhas e páginas antes de gerar a prévia e baixar uma cópia.
+
+A substituição remove o conteúdo textual selecionado e insere o novo no mesmo lugar; não cobre o original com uma caixa. A posição, a cor e uma família de fonte compatível são usadas na substituição. Fontes personalizadas não têm garantia de aparência idêntica. O texto pode diminuir para caber na largura original; substituições muito longas são recusadas. Não há reorganização de parágrafos ou suporte a quebras de linha nesta ferramenta.
+
+A verificação é por página e conservadora: texto invisível, imagens ocupando a maior parte da página e alguns estilos complexos bloqueiam a edição. Isso evita editar camadas de OCR de digitalizações comuns. PDF não possui um indicador universal de origem/OCR; reconstruções que já tenham virado texto visível nativo podem não ser distinguíveis. Linhas com estilos mistos, caracteres fora do conjunto latino ou texto inclinado podem não ser editáveis. Formulários têm sua própria ferramenta.
+
+### API Python opcional
+
+Após `npm ci && npm run build` (para preparar os arquivos do motor local), também é possível servir a interface pelo FastAPI:
 
 ```bash
 uvicorn perfectdf.web.app:app --reload
 ```
 
-Acesse [http://127.0.0.1:8000](http://127.0.0.1:8000).
+Os clientes da API Python continuam usando as rotas existentes. A interface usa exclusivamente o motor local.
+
+### Verificar o motor e a interface
+
+```bash
+npm test
+npx playwright install chromium
+npm run test:browser
+```
+
+Os testes do motor verificam PDFs gerados (páginas, texto, anotações, formulários, compressão e senhas), incluindo leitura de um documento maior que 50 MB. Os testes de navegador usam um servidor puramente estático e verificam prévia/download e ausência de uploads ou chamadas à API.
 
 ---
 
@@ -447,4 +519,4 @@ pytest -v
 
 ## 📄 Licença
 
-Este projeto é distribuído sob os termos da licença **GNU Affero General Public License v3.0 (AGPL-3.0)** em conformidade com as dependências do [PyMuPDF](https://pymupdf.readthedocs.io/). Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.
+Este projeto é distribuído sob os termos da licença **GNU Affero General Public License v3.0 (AGPL-3.0)** em conformidade com as dependências do [PyMuPDF](https://pymupdf.readthedocs.io/). Consulte [LICENSE](LICENSE), [THIRD_PARTY.md](THIRD_PARTY.md) e [as instruções de fontes e reconstrução](licenses/README.md) para mais detalhes. A página “Licenças e fontes” do site oferece as licenças e os fontes da versão publicada.

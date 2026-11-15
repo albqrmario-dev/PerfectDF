@@ -7,3 +7,10 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 skills/
+node_modules/
+dist/
+perfectdf/web/static/vendor/mupdf/
+playwright-report/
+test-results/
+perfectdf/web/static/vendor/pdfjs/
+.cache/
