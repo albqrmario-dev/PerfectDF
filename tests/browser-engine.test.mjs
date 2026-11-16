@@ -8,6 +8,19 @@ import { processPdf, pages } from '../perfectdf/web/static/pdf-engine.js';
 const original = readFileSync(new URL('./fixtures/browser.pdf', import.meta.url));
 const file = bytes => ({ bytes, name: 'exemplo.pdf' });
 const run = (operation, fields = {}, bytes = original) => processPdf({ operation, fields, files: [file(bytes)] });
+function simplePdf(label, pages) {
+  const doc = new mupdf.PDFDocument(), font = new mupdf.Font('Helvetica');
+  const pdfFont = doc.addSimpleFont(font, 'Latin'); font.destroy();
+  for (const [index, bounds] of pages.entries()) {
+    const [x0, y0, x1, y1] = bounds;
+    const content = `BT /F1 16 Tf ${x0 + 24} ${y1 - 36} Td (${label} pagina ${index + 1}) Tj ET`;
+    doc.insertPage(-1, doc.addPage(bounds, 0, { Font: { F1: pdfFont } }, content));
+  }
+  const buffer = doc.saveToBuffer({ compress: true });
+  const bytes = buffer.asUint8Array().slice();
+  buffer.destroy(); doc.destroy();
+  return bytes;
+}
 function inspect(bytes, callback) {
   const doc = mupdf.Document.openDocument(bytes, 'application/pdf');
   try { return callback(doc); } finally { doc.destroy(); }
@@ -79,6 +92,61 @@ test('joining keeps notes and independently editable forms from each input', () 
   });
   const filled = run('formularios/preencher', { dados_json: '{"arquivo1_nome":"Maria","arquivo2_nome":"João"}' }, bytes).bytes;
   assert.deepEqual(run('formularios/listar', {}, filled).json.campos.filter(c => c.tipo === 'text').map(c => c.valor), ['Maria', 'João']);
+});
+test('joining simple PDFs without AcroForm preserves order, page geometry, and all pages', () => {
+  const portrait = simplePdf('Primeiro', [[0, 0, 595, 842], [0, 0, 595, 842]]);
+  const landscape = simplePdf('Segundo', [[0, 0, 842, 595]]);
+  const third = simplePdf('Terceiro', [[0, 0, 420, 595], [0, 0, 595, 420]]);
+  const files = [portrait, landscape, third].map((bytes, index) => ({ name: `simples-${index + 1}.pdf`, bytes }));
+  const { bytes } = processPdf({ operation: 'paginas/juntar', files });
+  inspect(bytes, doc => {
+    assert.equal(doc.countPages(), 5);
+    assert.equal(doc.getTrailer().get('Root', 'AcroForm').isNull(), true);
+    const labels = [];
+    const sizes = [];
+    for (let index = 0; index < doc.countPages(); index++) {
+      const page = doc.loadPage(index);
+      const text = page.toStructuredText();
+      try { labels.push(text.asText().trim()); } finally { text.destroy(); }
+      sizes.push(page.getBounds().slice(2));
+      page.destroy();
+    }
+    assert.deepEqual(labels, [
+      'Primeiro pagina 1', 'Primeiro pagina 2', 'Segundo pagina 1',
+      'Terceiro pagina 1', 'Terceiro pagina 2',
+    ]);
+    assert.deepEqual(sizes, [[595, 842], [595, 842], [842, 595], [420, 595], [595, 420]]);
+  });
+  assert.match(text(bytes), /Terceiro pagina 2/);
+});
+test('joining mixed PDFs retains annotations and form widgets around simple PDFs', () => {
+  const plain = simplePdf('Sem formulario', [[0, 0, 595, 842]]);
+  const { bytes } = processPdf({ operation: 'paginas/juntar', files: [
+    { name: 'simples.pdf', bytes: plain },
+    { name: 'formulario.pdf', bytes: original },
+    { name: 'outro-simples.pdf', bytes: plain },
+  ] });
+  inspect(bytes, doc => {
+    assert.equal(doc.countPages(), 5);
+    const formPage = doc.loadPage(1);
+    assert.equal(formPage.getAnnotations().length, 1);
+    assert.equal(formPage.getAnnotations()[0].getContents(), 'Nota original');
+    assert.equal(formPage.getWidgets().length, 2);
+    formPage.destroy();
+  });
+  assert.match(text(bytes), /Sem formulario pagina 1/);
+  assert.match(text(bytes), /Pagina 3/);
+});
+test('joining reports the name of an invalid source PDF', () => {
+  const valid = simplePdf('Valido', [[0, 0, 595, 842]]);
+  for (const [name, bytes] of [
+    ['invalido.pdf', new TextEncoder().encode('não é um PDF')],
+    ['corrompido.pdf', valid.slice(0, 50)],
+  ]) {
+    assert.throws(() => processPdf({ operation: 'paginas/juntar', files: [
+      { name: 'valido.pdf', bytes: valid }, { name, bytes },
+    ] }), new RegExp(`${name.replace('.', '\\.')}.*inválido ou está corrompido`));
+  }
 });
 test('metadata editing', () => {
   const bytes = run('metadados/editar', { titulo: 'Relatório', autor: 'Maria' }).bytes;

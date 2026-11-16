@@ -254,30 +254,41 @@ export function processPdf({ operation, fields = {}, files }) {
       const destinationFonts = doc.newDictionary();
       destinationForm.put('Fields', destinationFields);
       destinationForm.put('DR', { Font: destinationFonts });
-      doc.getTrailer().get('Root').put('AcroForm', destinationForm);
       for (const [fileIndex, file] of files.entries()) {
-        const source = read(file);
+        const fileName = file.name || `PDF ${fileIndex + 1}`;
+        const failForFile = error => {
+          const detail = error instanceof Error ? error.message : String(error);
+          const reason = /no objects found|not a pdf document|truncated object|cannot recognize/i.test(detail)
+            ? 'o arquivo PDF é inválido ou está corrompido.' : detail;
+          return new Error(`Não foi possível juntar "${fileName}": ${reason}`, { cause: error });
+        };
+        let source;
+        try { source = read(file); } catch (error) { throw failForFile(error); }
         const map = doc.newGraftMap();
         try {
           const form = source.getTrailer().get('Root', 'AcroForm');
-          const fontNames = new Map();
-          form.get('DR', 'Font').forEach((font, name) => {
-            const unique = `D${fileIndex}_${name}`;
-            fontNames.set(name, unique);
-            destinationFonts.put(unique, map.graftObject(font));
-          });
-          const rewriteDA = value => value.replace(/\/([^\s/]+)/g, (match, name) => fontNames.has(name) ? '/' + fontNames.get(name) : match);
-          const updateField = (field, inheritedDA) => {
-            const appearance = field.get('DA').asString() || inheritedDA;
-            if (appearance) field.put('DA', source.newString(rewriteDA(appearance)));
-            field.get('Kids').forEach(child => updateField(child, appearance));
-          };
-          form.get('Fields').forEach(field => {
-            updateField(field, form.get('DA').asString());
-            // Namespace independent forms so identically named fields stay independent.
-            field.put('T', source.newString(`arquivo${fileIndex + 1}_${field.get('T').asString()}`));
-            destinationFields.push(map.graftObject(field));
-          });
+          if (!form.isNull()) {
+            const fontNames = new Map();
+            const formFonts = form.get('DR', 'Font');
+            if (!formFonts.isNull()) formFonts.forEach((font, name) => {
+              const unique = `D${fileIndex}_${name}`;
+              fontNames.set(name, unique);
+              destinationFonts.put(unique, map.graftObject(font));
+            });
+            const rewriteDA = value => value.replace(/\/([^\s/]+)/g, (match, name) => fontNames.has(name) ? '/' + fontNames.get(name) : match);
+            const updateField = (field, inheritedDA) => {
+              const appearance = field.get('DA').asString() || inheritedDA;
+              if (appearance) field.put('DA', source.newString(rewriteDA(appearance)));
+              field.get('Kids').forEach(child => updateField(child, appearance));
+            };
+            const formFields = form.get('Fields');
+            if (!formFields.isNull()) formFields.forEach(field => {
+              updateField(field, form.get('DA').asString());
+              // Namespace independent forms so identically named fields stay independent.
+              field.put('T', source.newString(`arquivo${fileIndex + 1}_${field.get('T').asString()}`));
+              destinationFields.push(map.graftObject(field));
+            });
+          }
           for (let i = 0; i < source.countPages(); i++) {
             const page = source.findPage(i);
             for (const key of ['Resources', 'MediaBox', 'CropBox', 'Rotate']) {
@@ -287,8 +298,11 @@ export function processPdf({ operation, fields = {}, files }) {
             // Copy the complete page, retaining annotations, links and widget objects.
             doc.insertPage(-1, map.graftObject(page));
           }
+        } catch (error) {
+          throw failForFile(error);
         } finally { map.destroy(); }
       }
+      if (destinationFields.length) doc.getTrailer().get('Root').put('AcroForm', destinationForm);
     } else doc = read(files[0]);
     const total = doc.countPages();
     if (operation === 'inspecionar') return { json: { tamanho: files[0].bytes.byteLength, total_paginas: total } };
