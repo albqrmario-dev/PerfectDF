@@ -748,3 +748,54 @@ test('signature zoom waits for the new viewport and keeps its PDF-relative place
   expect(after.page).toBe('2'); expect(after.view).toBe('Mostrando original'); expect(after.tool).toBe('tab-anotacoes');
   await testInfo.attach('signature-zoom-states', { body: JSON.stringify({ before, pending, after, oldElementDetached }, null, 2), contentType: 'application/json' });
 });
+
+test('watermark preview stays centered at different zooms and downloads the same PDF', async ({ page }) => {
+  const mupdf = await import('../perfectdf/web/static/vendor/mupdf/mupdf.js');
+  const doc = new mupdf.PDFDocument();
+  doc.insertPage(-1, doc.addPage([0, 0, 595, 842], 0, {}, ''));
+  const buffer = doc.saveToBuffer(), input = Buffer.from(buffer.asUint8Array());
+  buffer.destroy(); doc.destroy();
+  await page.goto('/');
+  await page.locator('#file-input').setInputFiles({ name: 'watermark-test.pdf', mimeType: 'application/pdf', buffer: input });
+  await expect(page.locator('#file-meta')).toContainText('Páginas: 1');
+  await page.locator('[data-tab="tab-anotacoes"]').click();
+  await page.getByRole('button', { name: 'Marca d’água', exact: true }).click();
+  await page.evaluate(() => {
+    const request = window.localPdfRequest;
+    window.localPdfRequest = async (...args) => {
+      const response = await request(...args);
+      if (args[0] === '/api/anotacoes/marca-dagua') window.watermarkPreviewBytes = Array.from(new Uint8Array(await response.clone().arrayBuffer()));
+      return response;
+    };
+  });
+  await page.locator('#btn-executar-acao').click();
+  await expect(page.locator('#estado-visualizacao')).toHaveText('Mostrando prévia');
+  const measure = () => page.locator('#pdf-canvas').evaluate(canvas => {
+    const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+    for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+      if (data[(y * canvas.width + x) * 4] < 245) {
+        left = Math.min(left, x); right = Math.max(right, x + 1);
+        top = Math.min(top, y); bottom = Math.max(bottom, y + 1);
+      }
+    }
+    return { width: canvas.width, dx: Math.abs(left + right - canvas.width) / 2, dy: Math.abs(top + bottom - canvas.height) / 2 };
+  });
+  // Two canvas pixels accommodate PDF.js antialiasing and integer canvas edges.
+  for (const zoom of [100, 75, 100, 125]) {
+    const current = Number((await page.locator('#span-zoom-level').textContent()).replace('%', ''));
+    if (current !== zoom) await page.locator(zoom > current ? '#btn-zoom-in' : '#btn-zoom-out').click();
+    await expect(page.locator('#span-zoom-level')).toHaveText(`${zoom}%`);
+    await expect.poll(async () => {
+      const result = await measure();
+      return Math.abs(result.width - Math.floor(595 * zoom / 100)) <= 1 && result.dx <= 2 && result.dy <= 2;
+    }).toBe(true);
+  }
+  const pending = page.waitForEvent('download');
+  await page.locator('#btn-baixar-previa').click();
+  const download = await pending;
+  const downloaded = await readFile(await download.path());
+  expect(Array.from(downloaded)).toEqual(await page.evaluate(() => window.watermarkPreviewBytes));
+  const opened = mupdf.Document.openDocument(downloaded, 'application/pdf');
+  expect(opened.countPages()).toBe(1); opened.destroy();
+});

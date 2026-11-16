@@ -79,6 +79,43 @@ function drawText(doc, page, text, x, y, size = 12, color = [0, 0, 0], opacity =
   object.put('Contents', contents);
 }
 
+function drawCenteredWatermark(doc, page, text, opacity, angle, size) {
+  const font = new mupdf.Font('Helvetica'), measured = new mupdf.Text();
+  try {
+    // Match drawText's text matrix, including the font-to-page Y inversion.
+    // Measure the rotated glyphs, not the baseline or an estimated string width.
+    textHex(text);
+    const radians = angle * Math.PI / 180, c = Math.cos(radians), s = Math.sin(radians);
+    measured.showString(font, [size * c, size * s, size * s, -size * c, 0, 0], text);
+    // MuPDF's rotated text bounds are conservative glyph rectangles. Measure
+    // the ink at 4x so diagonal outlines, too, are centered within 1/4 point.
+    // This bitmap is used only for measurement; the PDF keeps vector text.
+    const bounds = measured.getBounds(null, mupdf.Matrix.identity);
+    const scale = 4;
+    const bitmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceGray,
+      [Math.floor(bounds[0] * scale), Math.floor(bounds[1] * scale), Math.ceil(bounds[2] * scale), Math.ceil(bounds[3] * scale)], false);
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+    try {
+      bitmap.clear(255);
+      const device = new mupdf.DrawDevice(mupdf.Matrix.scale(scale, scale), bitmap);
+      try { device.fillText(measured, mupdf.Matrix.identity, mupdf.ColorSpace.DeviceGray, [0], 1); device.close(); }
+      finally { device.destroy(); }
+      const pixels = bitmap.getPixels(), stride = bitmap.getStride(), origin = bitmap.getBounds();
+      for (let y = 0; y < bitmap.getHeight(); y++) for (let x = 0; x < bitmap.getWidth(); x++) {
+        if (pixels[y * stride + x] < 128) {
+          left = Math.min(left, x + origin[0]); right = Math.max(right, x + origin[0] + 1);
+          top = Math.min(top, y + origin[1]); bottom = Math.max(bottom, y + origin[1] + 1);
+        }
+      }
+      if (!Number.isFinite(left)) throw new Error('A marca d’água precisa conter texto visível.');
+      left /= scale; right /= scale; top /= scale; bottom /= scale;
+    } finally { bitmap.destroy(); }
+    const [x0, y0, x1, y1] = page.getBounds();
+    drawText(doc, page, text, (x0 + x1 - left - right) / 2,
+      (y0 + y1 - top - bottom) / 2, size, [.5, .5, .5], opacity, angle);
+  } finally { measured.destroy(); font.destroy(); }
+}
+
 function compatibleFont(font) {
   if (font.isMono()) return 'Courier' + (font.isBold() ? '-Bold' : '') + (font.isItalic() ? (font.isBold() ? 'Oblique' : '-Oblique') : '');
   if (font.isSerif()) return font.isBold() ? (font.isItalic() ? 'Times-BoldItalic' : 'Times-Bold') : (font.isItalic() ? 'Times-Italic' : 'Times-Roman');
@@ -404,7 +441,10 @@ export function processPdf({ operation, fields = {}, files }) {
           } else if (operation === 'anotacoes/marca-dagua') {
             const opacity = Number(fields.opacidade);
             if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new Error('Opacidade inválida.');
-            drawText(doc, p, text, x0 + (x1 - x0) * .15, y0 + (y1 - y0) * .65, Math.min(48, (x1 - x0) / Math.max(text.length * .65, 1)), [.5, .5, .5], opacity, -45);
+            const angle = fields.angulo === undefined ? -45 : -Number(fields.angulo);
+            const size = fields.tamanho_fonte === undefined ? Math.min(48, (x1 - x0) / Math.max(text.length * .65, 1)) : Number(fields.tamanho_fonte);
+            if (!Number.isFinite(angle) || !Number.isFinite(size) || size <= 0) throw new Error('Rotação ou tamanho da marca d’água inválido.');
+            drawCenteredWatermark(doc, p, text, opacity, angle, size);
           } else if (operation === 'anotacoes/numerar') {
             const label = text.replaceAll('{n}', String(i + 1)).replaceAll('{total}', String(total));
             const position = fields.posicao || 'rodape-centro';

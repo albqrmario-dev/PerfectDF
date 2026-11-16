@@ -300,3 +300,37 @@ test('signature placement supports rotated CropBoxes and UserUnit without shifti
   }
   assert.ok(changes>20);
 });
+
+// Compare painted pixels, not text origins or font ascender rectangles. At 2x,
+// 1.5 PDF points allows three raster pixels for hinting and antialiasing.
+test('watermarks center the rotated ink on mixed page sizes, CropBoxes and rotations', () => {
+  const doc = new mupdf.PDFDocument();
+  for (const [box, rotation] of [
+    [[0, 0, 595, 842], 0], [[0, 0, 842, 595], 0], [[0, 0, 320, 480], 0],
+    [[20, 30, 620, 830], 90], [[0, 0, 595, 842], 180], [[0, 0, 595, 842], 270],
+  ]) doc.insertPage(-1, doc.addPage(box, rotation, {}, ''));
+  doc.findPage(3).put('CropBox', [40, 60, 600, 800]);
+  const buffer = doc.saveToBuffer();
+  const input = buffer.asUint8Array().slice(); buffer.destroy(); doc.destroy();
+  for (const angle of [0, 45]) {
+    const { bytes } = run('anotacoes/marca-dagua', { texto: 'CONFIDENCIAL', opacidade: '.3', angulo: angle }, input);
+    inspect(bytes, output => {
+      assert.equal(output.countPages(), 6);
+      for (let i = 0; i < output.countPages(); i++) {
+        const page = output.loadPage(i), pixmap = page.toPixmap(mupdf.Matrix.scale(2, 2), mupdf.ColorSpace.DeviceRGB, false);
+        const pixels = pixmap.getPixels(), stride = pixmap.getStride(), components = pixmap.getNumberOfComponents();
+        let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+        for (let y = 0; y < pixmap.getHeight(); y++) for (let x = 0; x < pixmap.getWidth(); x++) {
+          if (pixels[y * stride + x * components] < 245) {
+            left = Math.min(left, x); right = Math.max(right, x + 1);
+            top = Math.min(top, y); bottom = Math.max(bottom, y + 1);
+          }
+        }
+        assert.ok(Number.isFinite(left), 'watermark must be visible');
+        assert.ok(Math.abs((left + right - pixmap.getWidth()) / 4) <= 1.5, `page ${i}, angle ${angle}: horizontal ink center`);
+        assert.ok(Math.abs((top + bottom - pixmap.getHeight()) / 4) <= 1.5, `page ${i}, angle ${angle}: vertical ink center`);
+        pixmap.destroy(); page.destroy();
+      }
+    });
+  }
+});
